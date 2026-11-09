@@ -478,6 +478,8 @@ struct diagchar_dev {
 	struct diag_ws_ref_t dci_ws;
 	struct diag_ws_ref_t md_ws;
 	spinlock_t ws_lock;
+	/* pid for diag_mdlog(CP silent log app) */
+	struct pid *silent_log_pid;
 
 #ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 	/* common for all bridges */
