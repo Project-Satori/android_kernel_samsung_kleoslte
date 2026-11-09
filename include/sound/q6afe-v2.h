@@ -223,4 +223,7 @@ bool afe_has_config(enum afe_config_type config);
 void afe_set_aanc_info(struct aanc_data *aanc_info);
 int afe_port_group_set_param(u16 *port_id, int channel_count);
 int afe_port_group_enable(u16 enable);
+#ifdef CONFIG_SND_SOC_MAXIM_DSM
+int32_t dsm_open(int32_t port_id, uint32_t *dsm_params, u8 *param);
+#endif
 #endif /* __Q6AFE_V2_H__ */

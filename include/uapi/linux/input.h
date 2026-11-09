@@ -470,6 +470,13 @@ struct input_keymap_entry {
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
+#define KEY_DUMMY_HOME1		249	/* Dummy Touchkey : HOME1*/
+#define KEY_DUMMY_HOME2		250	/* Dummy Touchkey : HOME2*/
+#define KEY_DUMMY_MENU		251	/* Dummy Touchkey : MENU*/
+#define KEY_ACTIVITY_MENU	252	/* Activity menu key*/
+#define KEY_DUMMY_BACK		253	/* Dummy Touchkey : BACK*/
+#define KEY_RECENT		254	/* Key recent */
+
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -525,6 +532,7 @@ struct input_keymap_entry {
 #define BTN_MODE		0x13c
 #define BTN_THUMBL		0x13d
 #define BTN_THUMBR		0x13e
+#define BTN_GAME		0x13f
 
 #define BTN_DIGI		0x140
 #define BTN_TOOL_PEN		0x140
