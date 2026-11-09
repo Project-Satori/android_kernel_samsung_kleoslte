@@ -183,7 +183,7 @@ static int32_t msm_cci_validate_queue(struct cci_device *cci_dev,
 }
 
 static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
-	struct msm_camera_cci_ctrl *c_ctrl, enum cci_i2c_queue_t queue)
+	struct msm_camera_cci_ctrl *c_ctrl, enum cci_i2c_queue_t queue, uint8_t is_burst)
 {
 	uint16_t i = 0, j = 0, k = 0, h = 0, len = 0;
 	int32_t rc = 0;
@@ -235,16 +235,19 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 		}
 		/* max of 10 data bytes */
 		do {
-			if (i2c_msg->data_type == MSM_CAMERA_I2C_BYTE_DATA) {
+			if ((i2c_msg->data_type == MSM_CAMERA_I2C_BYTE_DATA) ||
+				(i2c_msg->data_type == MSM_CAMERA_I2C_BURST_DATA)) {
 				data[i++] = i2c_cmd->reg_data;
-				reg_addr++;
+				if (!is_burst)
+					reg_addr++;
 			} else {
 				if ((i + 1) <= 10) {
 					data[i++] = (i2c_cmd->reg_data &
 						0xFF00) >> 8; /* MSB */
 					data[i++] = i2c_cmd->reg_data &
 						0x00FF; /* LSB */
-					reg_addr += 2;
+					if (!is_burst)
+						reg_addr += 2;
 				} else
 					break;
 			}
@@ -524,7 +527,7 @@ ERROR:
 }
 
 static int32_t msm_cci_i2c_write(struct v4l2_subdev *sd,
-	struct msm_camera_cci_ctrl *c_ctrl)
+	struct msm_camera_cci_ctrl *c_ctrl, uint8_t is_burst)
 {
 	int32_t rc = 0;
 	struct cci_device *cci_dev;
@@ -581,7 +584,7 @@ static int32_t msm_cci_i2c_write(struct v4l2_subdev *sd,
 		goto ERROR;
 	}
 
-	rc = msm_cci_data_queue(cci_dev, c_ctrl, queue);
+	rc = msm_cci_data_queue(cci_dev, c_ctrl, queue, is_burst);
 	if (rc < 0) {
 		CDBG("%s failed line %d\n", __func__, __LINE__);
 		goto ERROR;
@@ -625,7 +628,11 @@ static int32_t msm_cci_i2c_write(struct v4l2_subdev *sd,
 		msm_cci_flush_queue(cci_dev, master);
 		goto ERROR;
 	} else {
+#if defined(CONFIG_SEC_FORTUNA_PROJECT) || defined(CONFIG_MACH_HEAT_EUR)
+		rc = 0;
+#else
 		rc = cci_dev->cci_master_info[master].status;
+#endif
 	}
 	CDBG("%s:%d X wait_for_completion_interruptible\n", __func__,
 		__LINE__);
@@ -851,7 +858,10 @@ static int32_t msm_cci_config(struct v4l2_subdev *sd,
 		rc = msm_cci_i2c_read_bytes(sd, cci_ctrl);
 		break;
 	case MSM_CCI_I2C_WRITE:
-		rc = msm_cci_i2c_write(sd, cci_ctrl);
+		rc = msm_cci_i2c_write(sd, cci_ctrl, 0);
+		break;
+	case MSM_CCI_I2C_WRITE_BURST:
+		rc = msm_cci_i2c_write(sd, cci_ctrl, 1);
 		break;
 	case MSM_CCI_GPIO_WRITE:
 		break;

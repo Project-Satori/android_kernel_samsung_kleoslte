@@ -18,3 +18,6 @@ obj-$(CONFIG_MT9M114) += mt9m114.o
 obj-$(CONFIG_MT9M114) += ov5645.o
 obj-$(CONFIG_SP1628) += sp1628.o
 obj-$(CONFIG_GC0339) += gc0339.o
+obj-$(CONFIG_S5K4ECGX) += s5k4ecgx_yuv.o
+obj-$(CONFIG_SR130PC20) += sr130pc20_yuv.o
+obj-$(CONFIG_SR030PC50) += sr030pc50_yuv.o

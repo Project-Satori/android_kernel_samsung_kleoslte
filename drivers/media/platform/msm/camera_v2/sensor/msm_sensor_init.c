@@ -28,6 +28,9 @@
 #define CDBG(fmt, args...) do { } while (0)
 #endif
 
+struct class *camera_class;
+uint16_t rear_vendor_id = 0;
+
 static struct msm_sensor_init_t *s_init;
 
 /* Static function declaration */
@@ -130,12 +133,170 @@ static long msm_sensor_init_subdev_ioctl(struct v4l2_subdev *sd,
 	return 0;
 }
 
+
+static ssize_t back_camera_type_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+
+#if defined(CONFIG_S5K4ECGX)
+	char type[] = "SLSI_S5K4ECGX\n";
+#elif defined(CONFIG_MACH_ROSSA_CMCC) || defined(CONFIG_MACH_ROSSA_CTC) || defined(CONFIG_MACH_ROSSA_TFN) || defined(CONFIG_MACH_ROSSA_SPR)
+	char type[] = "SILICONFILE_SR544\n";
+#else
+	char type[] = "SONY_IMX219\n";
+	//char type[] = "SLSI_S5K4H5YB\n";
+#endif
+
+	 return snprintf(buf, sizeof(type), "%s", type);
+}
+
+static ssize_t front_camera_type_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+
+#if defined(CONFIG_SR130PC20)
+	char cam_type[] = "SILICONFILE_SR130PC20\n";
+#elif defined(CONFIG_SR030PC50)
+	char cam_type[] = "SILICONFILE_SR030PC50\n";
+#elif defined(CONFIG_SR200PC20)
+	char cam_type[] = "SILICONFILE_SR200PC20\n";
+#else
+	char cam_type[] = "SLSI_S5K5E3YX\n";
+#endif
+
+	 return snprintf(buf, sizeof(cam_type), "%s", cam_type);
+}
+
+char cam_fw_ver[25] = "NULL NULL\n";
+static ssize_t back_camera_firmware_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+#if defined(CONFIG_S5K4ECGX)
+	char cam_fw[] = "S5K4ECGX N\n";
+	return snprintf(buf, sizeof(cam_fw), "%s", cam_fw);
+#else
+	CDBG("[FW_DBG] cam_fw_ver : %s\n", cam_fw_ver);
+	return snprintf(buf, sizeof(cam_fw_ver), "%s", cam_fw_ver);
+#endif
+}
+
+static ssize_t back_camera_firmware_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	CDBG("[FW_DBG] buf : %s\n", buf);
+	snprintf(cam_fw_ver, sizeof(cam_fw_ver), "%s", buf);
+
+	return size;
+}
+char cam_load_fw[25] = "NULL\n";
+static ssize_t back_camera_firmware_load_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	CDBG("[FW_DBG] cam_load_fw : %s\n", cam_load_fw);
+	return snprintf(buf, sizeof(cam_load_fw), "%s", cam_load_fw);
+}
+static ssize_t back_camera_firmware_load_store(struct device *dev,
+			struct device_attribute *attr, const char *buf, size_t size)
+{
+	CDBG("[FW_DBG] buf : %s\n", buf);
+	snprintf(cam_load_fw, sizeof(cam_load_fw), "%s\n", buf);
+	return size;
+}
+
+char cam_fw_full_ver[40] = "NULL NULL NULL\n"; /* Multi Module*/
+
+static ssize_t back_camera_firmware_full_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+#if defined(CONFIG_MACH_ROSSA_CMCC) || defined(CONFIG_MACH_ROSSA_CTC) || defined(CONFIG_MACH_ROSSA_TFN) || defined(CONFIG_MACH_ROSSA_SPR)
+	char cam_fw_full_ver[] = "A05QFHG01NA A05QFHG01NA\n";
+	return snprintf(buf, sizeof(cam_fw_full_ver), "%s", cam_fw_full_ver);
+#else
+	CDBG("[FW_DBG] cam_fw_ver : %s\n", cam_fw_full_ver);
+	return snprintf(buf, sizeof(cam_fw_full_ver), "%s", cam_fw_full_ver);
+#endif
+}
+static ssize_t back_camera_firmware_full_store(struct device *dev,
+			struct device_attribute *attr, const char *buf, size_t size)
+{
+	CDBG("[FW_DBG] buf : %s\n", buf);
+	snprintf(cam_fw_full_ver, sizeof(cam_fw_full_ver), "%s", buf);
+	return size;
+}
+static ssize_t rear_camera_isp_core_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	char isp_core[] = "0.9000\n";
+	return  snprintf(buf, sizeof(isp_core), "%s", isp_core);
+}
+
+static ssize_t rear_camera_vendorid_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	char vendor_id[16] = {0};
+	if (rear_vendor_id)
+		sprintf(vendor_id, "0x0%x\n", rear_vendor_id);
+	else
+		strncpy(vendor_id, "NULL\n", sizeof(vendor_id));
+
+	return  snprintf(buf, sizeof(vendor_id), "%s", vendor_id);
+}
+
+static ssize_t front_camera_firmware_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+
+#if defined(CONFIG_SR130PC20)
+	char cam_fw[] = "SR130PC20 N\n";
+#elif defined(CONFIG_SR030PC50)
+	char cam_fw[] = "SR030PC50 N\n";
+#elif defined(CONFIG_SR200PC20)
+	char cam_fw[] = "SR200PC20 N\n";
+#else
+	char cam_fw[] = "S5K5E3YX N\n";
+#endif
+	return  snprintf(buf, sizeof(cam_fw), "%s", cam_fw);
+}
+
+static ssize_t front_camera_firmware_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+
+	char cam_fw_ver[25] = "\n";
+
+	CDBG("[FW_DBG] buf : %s\n", buf);
+	snprintf(cam_fw_ver, sizeof(cam_fw_ver), "%s", buf);
+
+	return size;
+}
+
+static DEVICE_ATTR(rear_camtype, S_IRUGO, back_camera_type_show, NULL);
+static DEVICE_ATTR(rear_camfw, S_IRUGO|S_IWUSR|S_IWGRP,
+    back_camera_firmware_show, back_camera_firmware_store);
+static DEVICE_ATTR(rear_camfw_load, S_IRUGO|S_IWUSR|S_IWGRP,
+	back_camera_firmware_load_show, back_camera_firmware_load_store);
+static DEVICE_ATTR(rear_camfw_full, S_IRUGO | S_IWUSR | S_IWGRP,
+	back_camera_firmware_full_show, back_camera_firmware_full_store);
+static DEVICE_ATTR(isp_core, S_IRUGO, rear_camera_isp_core_show, NULL);
+static DEVICE_ATTR(front_camtype, S_IRUGO, front_camera_type_show, NULL);
+static DEVICE_ATTR(front_camfw, S_IRUGO|S_IWUSR|S_IWGRP,
+	front_camera_firmware_show, front_camera_firmware_store);
+static DEVICE_ATTR(rear_vendorid, S_IRUGO, rear_camera_vendorid_show, NULL);
+
 static int __init msm_sensor_init_module(void)
 {
-	int ret = 0;
+	struct msm_sensor_init_t *s_init = NULL;
+	struct device			*cam_dev_back;
+	struct device			*cam_dev_front;
+	int rc = 0;
+	camera_class = class_create(THIS_MODULE, "camera");
+	if (IS_ERR(camera_class))
+		pr_err("failed to create device cam_dev_rear!\n");
+
 	/* Allocate memory for msm_sensor_init control structure */
 	s_init = kzalloc(sizeof(struct msm_sensor_init_t), GFP_KERNEL);
 	if (!s_init) {
+		class_destroy(camera_class);
 		pr_err("failed: no memory s_init %p", NULL);
 		return -ENOMEM;
 	}
@@ -152,24 +313,89 @@ static int __init msm_sensor_init_module(void)
 	v4l2_set_subdevdata(&s_init->msm_sd.sd, s_init);
 	s_init->msm_sd.sd.internal_ops = &msm_sensor_init_internal_ops;
 	s_init->msm_sd.sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	media_entity_init(&s_init->msm_sd.sd.entity, 0, NULL, 0);
+	rc = media_entity_init(&s_init->msm_sd.sd.entity, 0, NULL, 0);
+	if (rc < 0)
+		goto entity_fail;
 	s_init->msm_sd.sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV;
 	s_init->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_SENSOR_INIT;
 	s_init->msm_sd.sd.entity.name = s_init->msm_sd.sd.name;
 	s_init->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x6;
-	ret = msm_sd_register(&s_init->msm_sd);
-	if (ret) {
-		CDBG("%s: msm_sd_register error = %d\n", __func__, rc);
-		goto error;
+	rc = msm_sd_register(&s_init->msm_sd);
+	if (rc < 0)
+		goto msm_sd_register_fail;
+
+	cam_dev_back = device_create(camera_class, NULL,
+			1, NULL, "rear");
+	if (IS_ERR(cam_dev_back)) {
+		printk("Failed to create cam_dev_back device!\n");
+		goto device_create_fail;
+	}
+
+	if (device_create_file(cam_dev_back, &dev_attr_rear_camtype) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+				dev_attr_rear_camtype.attr.name);
+		goto device_create_fail;
+	}
+	if (device_create_file(cam_dev_back, &dev_attr_rear_camfw) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+				dev_attr_rear_camfw.attr.name);
+		goto device_create_fail;
+	}
+
+	if (device_create_file(cam_dev_back, &dev_attr_isp_core) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+				dev_attr_isp_core.attr.name);
+		goto device_create_fail;
+	}
+
+	if (device_create_file(cam_dev_back, &dev_attr_rear_camfw_load) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+				dev_attr_rear_camfw_load.attr.name);
+		goto device_create_fail;
+	}
+
+	if (device_create_file(cam_dev_back, &dev_attr_rear_camfw_full) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+				dev_attr_rear_camfw_full.attr.name);
+		goto device_create_fail;
+	}
+
+	if (device_create_file(cam_dev_back, &dev_attr_rear_vendorid) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+			dev_attr_rear_vendorid.attr.name);
+		goto device_create_fail;
+	}
+
+	cam_dev_front = device_create(camera_class, NULL,
+		2, NULL, "front");
+	if (IS_ERR(cam_dev_front)) {
+		printk("Failed to create cam_dev_front device!");
+		goto device_create_fail;
+	}
+
+	if (device_create_file(cam_dev_front, &dev_attr_front_camtype) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+			dev_attr_front_camtype.attr.name);
+		goto device_create_fail;
+	}
+	if (device_create_file(cam_dev_front, &dev_attr_front_camfw) < 0) {
+		printk("Failed to create device file!(%s)!\n",
+			dev_attr_front_camfw.attr.name);
+		goto device_create_fail;
 	}
 
 	init_waitqueue_head(&s_init->state_wait);
 
 	return 0;
-error:
+device_create_fail:
+	msm_sd_unregister(&s_init->msm_sd);
+msm_sd_register_fail:
+	media_entity_cleanup(&s_init->msm_sd.sd.entity);
+entity_fail:
 	mutex_destroy(&s_init->imutex);
 	kfree(s_init);
-	return ret;
+	class_destroy(camera_class);
+	return rc;
 }
 
 static void __exit msm_sensor_exit_module(void)

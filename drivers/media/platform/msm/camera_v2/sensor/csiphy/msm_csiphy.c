@@ -112,6 +112,9 @@ static int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 			csiphybase +
 			csiphy_dev->ctrl_reg->csiphy_reg.
 			mipi_csiphy_lnck_cfg3_addr);
+		msm_camera_io_w(0xff,csiphybase +
+			csiphy_dev->ctrl_reg->csiphy_reg.
+			mipi_csiphy_lnn_cfg4_addr);
 		msm_camera_io_w(0x24,
 			csiphybase + csiphy_dev->ctrl_reg->
 			csiphy_reg.mipi_csiphy_interrupt_mask0_addr);
@@ -130,6 +133,9 @@ static int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 			csiphybase +
 			csiphy_dev->ctrl_reg->csiphy_reg.
 			mipi_csiphy_glbl_reset_addr);
+		msm_camera_io_w(0xff,csiphybase +
+			csiphy_dev->ctrl_reg->csiphy_reg.
+			mipi_csiphy_lnn_cfg4_addr+0x40);
 	}
 
 	lane_mask &= 0x1f;
@@ -145,6 +151,12 @@ static int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 		msm_camera_io_w(csiphy_params->settle_cnt,
 			csiphybase + csiphy_dev->ctrl_reg->csiphy_reg.
 			mipi_csiphy_lnn_cfg3_addr + 0x40*j);
+		/* set t_CLK_MISS_COUNT for clock lane (1) to MAX */
+		if (1 == j) {
+			msm_camera_io_w(0xff,
+				csiphybase + csiphy_dev->ctrl_reg->csiphy_reg.
+				mipi_csiphy_lnn_cfg4_addr + 0x40*j);
+		}
 		msm_camera_io_w(csiphy_dev->ctrl_reg->csiphy_reg.
 			mipi_csiphy_interrupt_mask_val, csiphybase +
 			csiphy_dev->ctrl_reg->csiphy_reg.
@@ -725,6 +737,7 @@ static int csiphy_probe(struct platform_device *pdev)
 		GFP_KERNEL);
 	if (!new_csiphy_dev->ctrl_reg) {
 		pr_err("%s:%d kzalloc failed\n", __func__, __LINE__);
+		kfree(new_csiphy_dev);
 		return -ENOMEM;
 	}
 	v4l2_subdev_init(&new_csiphy_dev->msm_sd.sd, &msm_csiphy_subdev_ops);
@@ -742,7 +755,8 @@ static int csiphy_probe(struct platform_device *pdev)
 	rc = msm_csiphy_get_clk_info(new_csiphy_dev, pdev);
 	if (rc < 0) {
 		pr_err("%s: msm_csiphy_get_clk_info() failed", __func__);
-		return -EFAULT;
+		rc = -EFAULT;
+		goto csiphy_no_resource;
 	}
 
 	new_csiphy_dev->mem = platform_get_resource_byname(pdev,

@@ -28,6 +28,36 @@ static struct msm_isp_bandwidth_mgr isp_bandwidth_mgr;
 #define MSM_ISP_MIN_IB 900000000
 
 #define VFE40_8974V2_VERSION 0x1001001A
+
+#define CAMERA_BOOST
+#ifdef CAMERA_BOOST
+#define MBYTE (1ULL << 20)
+
+#define BW_MBPS(_bw) \
+{ \
+	.vectors = &(struct msm_bus_vectors){ \
+		.src = 1, \
+		.dst = 512, \
+		.ib = (_bw) * MBYTE, \
+		.ab = 0, \
+	}, \
+	.num_paths = 1, \
+}
+
+static struct msm_bus_paths bw_level_tbl[] = {
+	[0] =  BW_MBPS(381), /* At least 50 MHz on bus. */
+	[1] =  BW_MBPS(4066), /* At least 533 MHz on bus. */
+};
+
+static struct msm_bus_scale_pdata bus_client_pdata = {
+	.usecase = bw_level_tbl,
+	.num_usecases = ARRAY_SIZE(bw_level_tbl),
+	.active_only = 1,
+	.name = "Camera_boost",
+};
+static u32 bus_client;
+#endif
+
 static struct msm_bus_vectors msm_isp_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_VFE,
@@ -129,6 +159,12 @@ int msm_isp_init_bandwidth_mgr(enum msm_isp_hw_client client)
 	   isp_bandwidth_mgr.bus_client,
 	   isp_bandwidth_mgr.bus_vector_active_idx);
 
+#ifdef CAMERA_BOOST
+	if (!bus_client) {
+		bus_client = msm_bus_scale_register_client(&bus_client_pdata);
+		msm_bus_scale_client_update_request(bus_client, 1);
+	}
+#endif
 	mutex_unlock(&bandwidth_mgr_mutex);
 	return 0;
 }
@@ -188,6 +224,12 @@ void msm_isp_deinit_bandwidth_mgr(enum msm_isp_hw_client client)
 	msm_bus_scale_client_update_request(
 	   isp_bandwidth_mgr.bus_client, 0);
 	msm_bus_scale_unregister_client(isp_bandwidth_mgr.bus_client);
+
+#ifdef CAMERA_BOOST
+	msm_bus_scale_client_update_request(bus_client, 0);
+	msm_bus_scale_unregister_client(bus_client);
+	bus_client = 0;
+#endif
 	isp_bandwidth_mgr.bus_client = 0;
 	mutex_unlock(&bandwidth_mgr_mutex);
 }
@@ -1047,10 +1089,6 @@ enum msm_isp_pack_fmt msm_isp_get_pack_format(uint32_t output_format)
 int msm_isp_get_bit_per_pixel(uint32_t output_format)
 {
 	switch (output_format) {
-	case V4L2_PIX_FMT_Y4:
-		return 4;
-	case V4L2_PIX_FMT_Y6:
-		return 6;
 	case V4L2_PIX_FMT_SBGGR8:
 	case V4L2_PIX_FMT_SGBRG8:
 	case V4L2_PIX_FMT_SGRBG8:
@@ -1061,30 +1099,6 @@ int msm_isp_get_bit_per_pixel(uint32_t output_format)
 	case V4L2_PIX_FMT_QRGGB8:
 	case V4L2_PIX_FMT_JPEG:
 	case V4L2_PIX_FMT_META:
-	case V4L2_PIX_FMT_NV12:
-	case V4L2_PIX_FMT_NV21:
-	case V4L2_PIX_FMT_NV14:
-	case V4L2_PIX_FMT_NV41:
-	case V4L2_PIX_FMT_YVU410:
-	case V4L2_PIX_FMT_YVU420:
-	case V4L2_PIX_FMT_YUYV:
-	case V4L2_PIX_FMT_YYUV:
-	case V4L2_PIX_FMT_YVYU:
-	case V4L2_PIX_FMT_UYVY:
-	case V4L2_PIX_FMT_VYUY:
-	case V4L2_PIX_FMT_YUV422P:
-	case V4L2_PIX_FMT_YUV411P:
-	case V4L2_PIX_FMT_Y41P:
-	case V4L2_PIX_FMT_YUV444:
-	case V4L2_PIX_FMT_YUV555:
-	case V4L2_PIX_FMT_YUV565:
-	case V4L2_PIX_FMT_YUV32:
-	case V4L2_PIX_FMT_YUV410:
-	case V4L2_PIX_FMT_YUV420:
-	case V4L2_PIX_FMT_GREY:
-	case V4L2_PIX_FMT_PAL8:
-	case V4L2_PIX_FMT_UV8:
-	case MSM_V4L2_PIX_FMT_META:
 		return 8;
 	case V4L2_PIX_FMT_SBGGR10:
 	case V4L2_PIX_FMT_SGBRG10:
@@ -1094,8 +1108,6 @@ int msm_isp_get_bit_per_pixel(uint32_t output_format)
 	case V4L2_PIX_FMT_QGBRG10:
 	case V4L2_PIX_FMT_QGRBG10:
 	case V4L2_PIX_FMT_QRGGB10:
-	case V4L2_PIX_FMT_Y10:
-	case V4L2_PIX_FMT_Y10BPACK:
 		return 10;
 	case V4L2_PIX_FMT_SBGGR12:
 	case V4L2_PIX_FMT_SGBRG12:
@@ -1105,16 +1117,20 @@ int msm_isp_get_bit_per_pixel(uint32_t output_format)
 	case V4L2_PIX_FMT_QGBRG12:
 	case V4L2_PIX_FMT_QGRBG12:
 	case V4L2_PIX_FMT_QRGGB12:
-	case V4L2_PIX_FMT_Y12:
 		return 12;
+        case V4L2_PIX_FMT_NV12:
+        case V4L2_PIX_FMT_NV21:
+        case V4L2_PIX_FMT_NV14:
+        case V4L2_PIX_FMT_NV41:
+                return 8;
 	case V4L2_PIX_FMT_NV16:
 	case V4L2_PIX_FMT_NV61:
-	case V4L2_PIX_FMT_Y16:
 		return 16;
 		/*TD: Add more image format*/
 	default:
-		msm_isp_print_fourcc_error(__func__, output_format);
-		return -EINVAL;
+		//msm_isp_print_fourcc_error(__func__, output_format);
+		pr_err("%s: Invalid output format\n", __func__);
+		return 10;
 	}
 }
 
@@ -1180,6 +1196,9 @@ static inline void msm_isp_process_overflow_irq(
 {
 	uint32_t overflow_mask;
 	uint32_t halt_restart_mask0, halt_restart_mask1;
+#if defined(CONFIG_SEC_ROSSA_PROJECT)
+	uint8_t cur_stream_cnt = 0;
+#endif
 	/*Mask out all other irqs if recovery is started*/
 	if (atomic_read(&vfe_dev->error_info.overflow_state) !=
 		NO_OVERFLOW) {
@@ -1196,6 +1215,18 @@ static inline void msm_isp_process_overflow_irq(
 		get_overflow_mask(&overflow_mask);
 	overflow_mask &= *irq_status1;
 	if (overflow_mask) {
+#if defined(CONFIG_SEC_ROSSA_PROJECT)
+	  cur_stream_cnt = msm_isp_get_curr_stream_cnt(vfe_dev);
+	  if (cur_stream_cnt == 0) {
+	    /* When immediate stop is issued during streamoff and
+	    AXI bridge is halted, if write masters are still
+		active, then it's possible to get overflow Irq
+		because WM is still writing pixels into UB, but UB
+		has no way to write into bus. Since everything is
+		being stopped anyway, skip the overflow recovery */
+		return;
+	}
+#endif
 		pr_warn("%s: Bus overflow detected: 0x%x\n",
 			__func__, overflow_mask);
 		atomic_set(&vfe_dev->error_info.overflow_state,

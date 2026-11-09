@@ -24,6 +24,13 @@
 
 #define MSM_ISP_MIN_AB 450000000
 #define MSM_ISP_MIN_IB 900000000
+#if defined(CONFIG_SEC_FORTUNA_PROJECT) || defined(CONFIG_MACH_ROSSA_CMCC) \
+	|| defined(CONFIG_SEC_KLEOS_PROJECT) || defined(CONFIG_SEC_A3_PROJECT) \
+	|| defined(CONFIG_SEC_A3_EUR_PROJECT) || defined(CONFIG_SEC_A33G_EUR_PROJECT) \
+	|| defined(CONFIG_MACH_ROSSA_CTC) || defined(CONFIG_MACH_ROSSA_SPR) || defined(CONFIG_MACH_ROSSA_TFN) \
+	|| defined(CONFIG_MACH_ROSSA_AUS)
+#define MIN_IB         1700000000
+#endif
 
 int msm_isp_axi_create_stream(
 	struct msm_vfe_axi_shared_data *axi_data,
@@ -442,6 +449,49 @@ static void msm_isp_reset_framedrop(struct vfe_device *vfe_dev,
 	vfe_dev->hw_info->vfe_ops.axi_ops.cfg_framedrop(vfe_dev, stream_info);
 }
 
+#if defined(CONFIG_SEC_ROSSA_PROJECT)
+void msm_isp_sof_notify(struct vfe_device *vfe_dev,
+	enum msm_vfe_input_src frame_src, struct msm_isp_timestamp *ts) {
+	struct msm_isp_event_data sof_event;
+	uint32_t session_id;
+	unsigned long flags;
+	uint16_t session_mask = 0;
+
+	session_id = vfe_dev->axi_data.src_info[frame_src].session_id;
+	spin_lock_irqsave(&vfe_dev->sof_lock, flags);
+	session_mask = vfe_dev->axi_data.session_frame_src_mask[session_id];
+	spin_unlock_irqrestore(&vfe_dev->sof_lock, flags);
+
+	if (!(session_mask & (1 << frame_src))) {
+		pr_err("%s: Ignoring the Sof for the source INTF %d\n",
+			__func__, (1 << frame_src));
+		return;
+	}
+	vfe_dev->axi_data.current_frame_src_mask[session_id] |=
+		(1 << frame_src);
+	pr_debug("%s: current mask 0x%X , session mask 0x%X, session_id %d\n",
+		 __func__,
+		vfe_dev->axi_data.current_frame_src_mask[session_id],
+		session_mask,
+		session_id);
+	if ((vfe_dev->axi_data.current_frame_src_mask[session_id] ==
+		session_mask)) {
+		vfe_dev->axi_data.current_frame_src_mask[session_id] = 0;
+
+		vfe_dev->axi_data.frame_id[session_id]++;
+		if (vfe_dev->axi_data.frame_id[session_id] == 0)
+			vfe_dev->axi_data.frame_id[session_id] = 1;
+		sof_event.input_intf = session_mask;
+		sof_event.frame_id = vfe_dev->axi_data.frame_id[session_id];
+		sof_event.timestamp = ts->event_time;
+		sof_event.mono_timestamp = ts->buf_time;
+		msm_isp_send_event(vfe_dev,
+		ISP_EVENT_SOF + frame_src, &sof_event);
+		pr_debug("%s: frame id %d\n", __func__,
+			vfe_dev->axi_data.frame_id[session_id]);
+	}
+}
+#else
 void msm_isp_sof_notify(struct vfe_device *vfe_dev,
 	enum msm_vfe_input_src frame_src, struct msm_isp_timestamp *ts) {
 	struct msm_isp_event_data sof_event;
@@ -479,6 +529,7 @@ void msm_isp_sof_notify(struct vfe_device *vfe_dev,
 			vfe_dev->axi_data.frame_id[session_id]);
 	}
 }
+#endif
 
 void msm_isp_calculate_framedrop(
 	struct msm_vfe_axi_shared_data *axi_data,
@@ -1125,7 +1176,7 @@ static void msm_isp_update_rdi_output_count(
 	}
 }
 
-static uint8_t msm_isp_get_curr_stream_cnt(
+uint8_t msm_isp_get_curr_stream_cnt(
 	  struct vfe_device *vfe_dev)
 {
 	uint8_t curr_stream_cnt = 0;
@@ -1179,6 +1230,13 @@ static int msm_isp_update_stream_bandwidth(struct vfe_device *vfe_dev)
 	uint32_t num_rdi_streams = 0;
 	uint32_t total_streams   = 0;
 	uint64_t total_bandwidth = 0;
+#if defined(CONFIG_SEC_FORTUNA_PROJECT) || defined(CONFIG_MACH_ROSSA_CMCC) \
+	|| defined(CONFIG_SEC_KLEOS_PROJECT) || defined(CONFIG_SEC_A3_PROJECT) \
+	|| defined(CONFIG_SEC_A3_EUR_PROJECT) || defined(CONFIG_SEC_A33G_EUR_PROJECT) \
+	|| defined(CONFIG_MACH_ROSSA_CTC) || defined(CONFIG_MACH_ROSSA_SPR) || defined(CONFIG_MACH_ROSSA_TFN) \
+	|| defined(CONFIG_MACH_ROSSA_AUS)
+	uint64_t ib_total_bandwidth = 0;
+#endif
 
 	for (i = 0; i < MAX_NUM_STREAM; i++) {
 		stream_info = &axi_data->stream_info[i];
@@ -1200,6 +1258,28 @@ static int msm_isp_update_stream_bandwidth(struct vfe_device *vfe_dev)
 			pixel_clock) * ISP_DEFAULT_FORMAT_FACTOR / ISP_Q2;
 	total_bandwidth = total_pix_bandwidth + total_rdi_bandwidth;
 	total_streams = num_pix_streams + num_rdi_streams;
+#if defined(CONFIG_SEC_FORTUNA_PROJECT) || defined(CONFIG_MACH_ROSSA_CMCC) \
+	|| defined(CONFIG_SEC_KLEOS_PROJECT) || defined(CONFIG_SEC_A3_PROJECT) \
+	|| defined(CONFIG_SEC_A3_EUR_PROJECT) || defined(CONFIG_SEC_A33G_EUR_PROJECT) \
+	|| defined(CONFIG_MACH_ROSSA_CTC) || defined(CONFIG_MACH_ROSSA_SPR) || defined(CONFIG_MACH_ROSSA_TFN) \
+	|| defined(CONFIG_MACH_ROSSA_AUS)
+	if (total_streams == 1) {
+	  ib_total_bandwidth = total_bandwidth *
+		ISP_BUS_UTILIZATION_FACTOR / ISP_Q2 - MSM_ISP_MIN_IB;
+	  if(ib_total_bandwidth < MIN_IB)
+	        ib_total_bandwidth = MIN_IB;
+          rc = msm_isp_update_bandwidth(ISP_VFE0 + vfe_dev->pdev->id,
+		(total_bandwidth - MSM_ISP_MIN_AB) , ib_total_bandwidth);
+	}
+	else {
+	   ib_total_bandwidth = total_bandwidth *
+		ISP_BUS_UTILIZATION_FACTOR / ISP_Q2;
+	   if(ib_total_bandwidth < MIN_IB)
+	        ib_total_bandwidth = MIN_IB;
+	   rc = msm_isp_update_bandwidth(ISP_VFE0 + vfe_dev->pdev->id,
+		total_bandwidth, ib_total_bandwidth);
+	}
+#else
 	if (total_streams == 1) {
          rc = msm_isp_update_bandwidth(ISP_VFE0 + vfe_dev->pdev->id,
 		(total_bandwidth - MSM_ISP_MIN_AB) , (total_bandwidth *
@@ -1210,6 +1290,7 @@ static int msm_isp_update_stream_bandwidth(struct vfe_device *vfe_dev)
 		total_bandwidth, total_bandwidth *
 		ISP_BUS_UTILIZATION_FACTOR / ISP_Q2);
 	}
+#endif
 	if (rc < 0)
 		pr_err("%s: update failed\n", __func__);
 
@@ -1224,7 +1305,11 @@ static int msm_isp_axi_wait_for_cfg_done(struct vfe_device *vfe_dev,
 	spin_lock_irqsave(&vfe_dev->shared_data_lock, flags);
 	init_completion(&vfe_dev->stream_config_complete);
 	vfe_dev->axi_data.pipeline_update = camif_update;
+#if defined(CONFIG_MACH_HEAT_EUR)
+	vfe_dev->axi_data.stream_update = 1;
+#else
 	vfe_dev->axi_data.stream_update = 2;
+#endif
 	spin_unlock_irqrestore(&vfe_dev->shared_data_lock, flags);
 	rc = wait_for_completion_timeout(
 		&vfe_dev->stream_config_complete,
@@ -1293,6 +1378,27 @@ static void msm_isp_get_stream_wm_mask(
 	for (i = 0; i < stream_info->num_planes; i++)
 		*wm_reload_mask |= (1 << stream_info->wm[i]);
 }
+#if defined(CONFIG_MACH_HEAT_EUR)
+static void msm_isp_axi_stream_update_new(struct vfe_device *vfe_dev, enum msm_isp_camif_update_state camif_update)
+{
+       int i;
+       struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
+
+       for (i = 0; i < MAX_NUM_STREAM; i++) {
+		if (axi_data->stream_info[i].state == START_PENDING || axi_data->stream_info[i].state == STOP_PENDING) {
+			msm_isp_axi_stream_enable_cfg(vfe_dev, &axi_data->stream_info[i]);
+			axi_data->stream_info[i].state = axi_data->stream_info[i].state == START_PENDING ? STARTING : STOPPING;
+		} else if (axi_data->stream_info[i].state == STARTING || axi_data->stream_info[i].state == STOPPING) {
+			axi_data->stream_info[i].state = axi_data->stream_info[i].state == STARTING ? ACTIVE : INACTIVE;
+		}
+	}
+
+	if (camif_update == DISABLE_CAMIF) {
+		vfe_dev->hw_info->vfe_ops.stats_ops.enable_module(vfe_dev, 0xFF, 0);
+	        vfe_dev->axi_data.pipeline_update = NO_UPDATE;
+	 }
+}
+#endif
 
 static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 			struct msm_vfe_axi_stream_cfg_cmd *stream_cfg_cmd,
@@ -1368,13 +1474,134 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 		vfe_dev->axi_data.src_info[VFE_RAW_1].frame_id = 0;
 	else if (vfe_dev->axi_data.src_info[VFE_RAW_2].raw_stream_count > 0)
 		vfe_dev->axi_data.src_info[VFE_RAW_2].frame_id = 0;
-
+#if defined(CONFIG_MACH_HEAT_EUR)
+	if (wait_for_complete){
+		msm_isp_axi_stream_update_new(vfe_dev, camif_update);
+		rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, camif_update);
+	}
+#else
 	if (wait_for_complete)
 		rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, camif_update);
-
+#endif
 	return rc;
 }
 
+#if defined(CONFIG_SEC_ROSSA_PROJECT)
+static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
+			struct msm_vfe_axi_stream_cfg_cmd *stream_cfg_cmd,
+			enum msm_isp_camif_update_state camif_update)
+{
+	int i, rc = 0;
+	uint8_t wait_for_complete = 0, cur_stream_cnt = 0;
+	struct msm_vfe_axi_stream *stream_info = NULL;
+	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
+	uint16_t session_mask = 0;
+	uint32_t session_id = 0;
+	uint8_t skip_session_mask_update = 0;
+	unsigned long flags;
+
+	if (stream_cfg_cmd->num_streams > MAX_NUM_STREAM ||
+		stream_cfg_cmd->num_streams == 0)
+		return -EINVAL;
+	msm_isp_update_camif_output_count(vfe_dev, stream_cfg_cmd);
+	msm_isp_update_rdi_output_count(vfe_dev, stream_cfg_cmd);
+	cur_stream_cnt = msm_isp_get_curr_stream_cnt(vfe_dev);
+
+	for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
+		if (HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i])
+		> MAX_NUM_STREAM) {
+			return -EINVAL;
+		}
+		stream_info = &axi_data->stream_info[
+			HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i])];
+
+		stream_info->state = STOP_PENDING;
+		session_id = stream_info->session_id;
+		if (!session_mask)
+			session_mask = vfe_dev->axi_data.
+				session_frame_src_mask[session_id];
+		if (cur_stream_cnt > 0)
+			wait_for_complete = 1;
+		if (SRC_TO_INTF(stream_info->stream_src) == VFE_PIX_0) {
+			if ((vfe_dev->axi_data.
+				src_info[SRC_TO_INTF(stream_info->stream_src)].
+				pix_stream_count + vfe_dev->axi_data.
+				src_info[SRC_TO_INTF(stream_info->stream_src)].
+				raw_stream_count) >= 1)
+					skip_session_mask_update = 1;
+				else
+					session_mask &=
+						~(1 << SRC_TO_INTF(
+						stream_info->stream_src));
+		} else {
+			session_mask &=
+				~(1 << SRC_TO_INTF(stream_info->stream_src));
+		}
+	}
+
+	if (wait_for_complete) {
+#if defined(CONFIG_MACH_HEAT_EUR)
+	msm_isp_axi_stream_update_new(vfe_dev, DISABLE_CAMIF);
+	rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, NO_UPDATE);
+#else
+	rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, camif_update);
+#endif
+		if (rc < 0) {
+			pr_err("%s: wait for config done failed\n", __func__);
+			for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
+				stream_info = &axi_data->stream_info[
+				HANDLE_TO_IDX(
+					stream_cfg_cmd->stream_handle[i])];
+				stream_info->state = STOP_PENDING;
+				msm_isp_axi_stream_enable_cfg(
+					vfe_dev, stream_info);
+				stream_info->state = INACTIVE;
+			}
+		}
+	} else {
+		pr_err("%s: Stop Immediately! stream_id=%d\n", __func__,
+			   stream_info->stream_id);
+		for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
+			stream_info = &axi_data->stream_info[
+			HANDLE_TO_IDX(
+				stream_cfg_cmd->stream_handle[i])];
+			stream_info->state = STOP_PENDING;
+			msm_isp_axi_stream_enable_cfg(
+				vfe_dev, stream_info);
+			stream_info->state = INACTIVE;
+		}
+	}
+	if (!skip_session_mask_update) {
+		if (session_mask == 0)
+			vfe_dev->axi_data.frame_id[session_id] = 0;
+		spin_lock_irqsave(&vfe_dev->sof_lock, flags);
+		vfe_dev->axi_data.
+			session_frame_src_mask[session_id] = session_mask;
+		spin_unlock_irqrestore(&vfe_dev->sof_lock, flags);
+	}
+	msm_isp_update_stream_bandwidth(vfe_dev);
+	if (camif_update == DISABLE_CAMIF)
+		vfe_dev->hw_info->vfe_ops.core_ops.
+			update_camif_state(vfe_dev, DISABLE_CAMIF);
+	else if (camif_update == DISABLE_CAMIF_IMMEDIATELY)
+		vfe_dev->hw_info->vfe_ops.core_ops.
+			update_camif_state(vfe_dev, DISABLE_CAMIF_IMMEDIATELY);
+
+	if (cur_stream_cnt == 0) {
+			vfe_dev->hw_info->vfe_ops.axi_ops.halt(vfe_dev, 1);
+		vfe_dev->hw_info->vfe_ops.core_ops.
+			reset_hw(vfe_dev, ISP_RST_HARD, 1);
+		vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
+	}
+
+	for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
+		stream_info = &axi_data->stream_info[
+			HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i])];
+		msm_isp_deinit_stream_ping_pong_reg(vfe_dev, stream_info);
+	}
+	return rc;
+}
+#else
 static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 			struct msm_vfe_axi_stream_cfg_cmd *stream_cfg_cmd,
 			enum msm_isp_camif_update_state camif_update)
@@ -1446,7 +1673,12 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 
 	}
 	if (wait_for_complete) {
-		rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, camif_update);
+#if defined(CONFIG_MACH_HEAT_EUR)
+	msm_isp_axi_stream_update_new(vfe_dev, DISABLE_CAMIF);
+	rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, NO_UPDATE);
+#else
+	rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, camif_update);
+#endif
 		if (rc < 0) {
 			pr_err("%s: wait for config done failed\n", __func__);
 			for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
@@ -1491,6 +1723,7 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 	}
 	return rc;
 }
+#endif
 
 
 int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg)

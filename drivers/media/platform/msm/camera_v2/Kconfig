@@ -93,6 +93,14 @@ config MSM_EEPROM
           and also provides support for writing data in case of FLASH ROM.
 	  Currently supports I2C, CCI and SPI protocol
 
+config MSM_OTP
+        bool "Qualcomm MSM Camera ROM Interface for Calibration support"
+        depends on MSMB_CAMERA
+        ---help---
+          Enable support for ROM Interface for Calibration
+          Provides interface for reading the Claibration data.
+          and also provides support for writing data
+
 config MSM_ISPIF
         bool "Qualcomm MSM Image Signal Processing interface support"
         depends on MSMB_CAMERA
@@ -172,7 +180,20 @@ config OV5645
 		and snapshot. The preview and snapshot resolution shall be
 		1280 * 270. It does not support auto focus. It supports
 		few special effects like saturation.
-
+config SR200PC20
+	bool "Sensor for front camera"
+	depends on MSMB_CAMERA
+	default n
+	---help---
+	  Siliconfile 2.0MP sensor,
+	  Front sensor.
+config SR030PC50
+	bool "Sensor for front camera"
+	depends on MSMB_CAMERA
+	default n
+	---help---
+	  Siliconfile VGA sensor,
+	  Front sensor.
 config SP1628
 	bool "Sensor SP1628 (YUV 720P)"
 	depends on MSMB_CAMERA
@@ -249,3 +270,28 @@ config MSM_GEMINI
 	depends on MSMB_CAMERA && (ARCH_MSM7X30 || ARCH_MSM8X60 || ARCH_MSM8960)
 	---help---
 	  Enables support for the Gemini JPEG encoder engine for 8x60.
+
+config FRONT_EEPROM
+    bool "Front eeprom"
+    ---help---
+      Enables Front eeprom.
+
+config S5K4ECGX
+	bool "Sensor s5k4ecgx (SOC 5MP)"
+	depends on MSMB_CAMERA
+	---help---
+		Samsung 5 MP SOC Sensor. It uses 2 mipi lanes,
+		Support auto focus, and flash
+
+config SR130PC20
+	bool "Sensor s5k4e1 (SOC 1.3MP)"
+	depends on MSMB_CAMERA
+	---help---
+		Samsung 1.3 MP SOC Sensor. It uses 1 mipi lanes,
+		Does not support auto focus, and flash
+
+config CAM_DUAL_POWER_SEQ
+	bool "Dual power up sequence enable"
+	depends on MSMB_CAMERA
+	---help---
+		This flag will allow us to write dual power up sequence.

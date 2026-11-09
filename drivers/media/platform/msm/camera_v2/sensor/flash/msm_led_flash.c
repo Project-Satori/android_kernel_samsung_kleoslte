@@ -14,6 +14,7 @@
 #define pr_fmt(fmt) "%s:%d " fmt, __func__, __LINE__
 
 #include "msm_led_flash.h"
+#include <linux/of_gpio.h>
 
 /*#define CONFIG_MSMB_CAMERA_DEBUG*/
 #undef CDBG
@@ -85,6 +86,19 @@ int32_t msm_led_flash_create_v4lsubdev(struct platform_device *pdev, void *data)
 	fctrl->msm_sd.sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV;
 	fctrl->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_LED_FLASH;
 	fctrl->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x1;
+
+	fctrl->led_irq_gpio1 = of_get_named_gpio(fctrl->pdev->dev.of_node, "qcom,led1-gpio", 0);
+	if (fctrl->led_irq_gpio1 < 0) {
+		pr_err("Fail get led1-gpio\n");
+		return -EINVAL;
+	}
+
+	fctrl->led_irq_gpio2 = of_get_named_gpio(fctrl->pdev->dev.of_node, "qcom,led2-gpio", 0);
+	if (fctrl->led_irq_gpio2 < 0) {
+		pr_err("Fail get led2-gpio\n");
+		return -EINVAL;
+    }
+
 	msm_sd_register(&fctrl->msm_sd);
 
 	CDBG("probe success\n");

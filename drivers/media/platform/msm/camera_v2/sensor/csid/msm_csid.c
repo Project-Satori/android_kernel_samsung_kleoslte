@@ -177,14 +177,19 @@ static int msm_csid_config(struct csid_device *csid_dev,
 static irqreturn_t msm_csid_irq(int irq_num, void *data)
 {
 	uint32_t irq;
-	struct csid_device *csid_dev = data;
+	struct csid_device *csid_dev ;
 	void __iomem *csidbase;
-	csidbase = csid_dev->base;
 
-	if (!csid_dev) {
+	if (!data) {
+		pr_err("%s:%d data NULL\n", __func__, __LINE__);
+		return IRQ_HANDLED;
+	}//prevent
+	csid_dev = data ;
+	if (!csid_dev->base) {
 		pr_err("%s:%d csid_dev NULL\n", __func__, __LINE__);
 		return IRQ_HANDLED;
 	}
+	csidbase = csid_dev->base;
 	irq = msm_camera_io_r(csid_dev->base +
 		csid_dev->ctrl_reg->csid_reg.csid_irq_status_addr);
 	CDBG("%s CSID%d_IRQ_STATUS_ADDR = 0x%x\n",
@@ -664,6 +669,7 @@ static int csid_probe(struct platform_device *pdev)
 		GFP_KERNEL);
 	if (!new_csid_dev->ctrl_reg) {
 		pr_err("%s:%d kzalloc failed\n", __func__, __LINE__);
+		kfree(new_csid_dev);
 		return -ENOMEM;
 	}
 
@@ -678,6 +684,7 @@ static int csid_probe(struct platform_device *pdev)
 		if (rc < 0) {
 			pr_err("%s:%d failed to read cell-index\n", __func__,
 				__LINE__);
+			rc = -ENODEV;
 			goto csid_no_resource;
 		}
 		CDBG("%s device id %d\n", __func__, pdev->id);
@@ -687,6 +694,7 @@ static int csid_probe(struct platform_device *pdev)
 		if (rc < 0) {
 			pr_err("%s:%d failed to read qcom,csi-vdd-voltage\n",
 				__func__, __LINE__);
+			rc = -ENODEV;
 			goto csid_no_resource;
 		}
 		CDBG("%s:%d reading mipi_csi_vdd is %d\n", __func__, __LINE__,
@@ -699,7 +707,8 @@ static int csid_probe(struct platform_device *pdev)
 	rc = msm_csid_get_clk_info(new_csid_dev, pdev);
 	if (rc < 0) {
 		pr_err("%s: msm_csid_get_clk_info() failed", __func__);
-		return -EFAULT;
+		rc = -EFAULT;
+		goto csid_no_resource;
 	}
 
 
@@ -780,7 +789,8 @@ static int csid_probe(struct platform_device *pdev)
 	} else {
 		pr_err("%s:%d, invalid hw version : 0x%x", __func__, __LINE__,
 		new_csid_dev->hw_dts_version);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto csid_no_resource;
 	}
 
 	new_csid_dev->csid_state = CSID_POWER_DOWN;
@@ -790,7 +800,7 @@ csid_no_resource:
 	mutex_destroy(&new_csid_dev->mutex);
 	kfree(new_csid_dev->ctrl_reg);
 	kfree(new_csid_dev);
-	return 0;
+	return rc;
 }
 
 static const struct of_device_id msm_csid_dt_match[] = {

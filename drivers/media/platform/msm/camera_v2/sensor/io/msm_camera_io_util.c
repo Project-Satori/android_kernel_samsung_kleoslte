@@ -480,6 +480,27 @@ int msm_camera_config_single_vreg(struct device *dev,
 			goto vreg_get_fail;
 		}
 		CDBG("%s enable %s\n", __func__, cam_vreg->reg_name);
+		if (!strncmp(cam_vreg->reg_name, "cam_vdig", 7)) {
+#if defined(CONFIG_MACH_ROSSA_CMCC) || defined(CONFIG_MACH_VIVALTO_AUS)|| defined(CONFIG_MACH_ROSSA_CTC) || defined(CONFIG_MACH_ROSSA_SPR) || defined(CONFIG_MACH_ROSSA_TFN) || defined(CONFIG_MACH_ROSSA_AUS)
+			*reg_ptr = regulator_get(dev, "CAM_SENSOR_IO_1.8V");
+#else
+			*reg_ptr = regulator_get(dev, "CAM_SENSOR_CORE_1.2V");
+#endif
+			if (IS_ERR(*reg_ptr)) {
+				pr_err("%s: %s get failed\n", __func__,
+						cam_vreg->reg_name);
+				*reg_ptr = NULL;
+				goto vreg_get_fail;
+			}
+		} else if (!strncmp(cam_vreg->reg_name, "cam_vana", 8)) {
+			*reg_ptr = regulator_get(dev, "CAM_SENSOR_A2.8V");
+			if (IS_ERR(*reg_ptr)) {
+				pr_err("%s: %s get failed\n", __func__,
+						cam_vreg->reg_name);
+				*reg_ptr = NULL;
+				goto vreg_get_fail;
+			}
+		} else {
 		*reg_ptr = regulator_get(dev, cam_vreg->reg_name);
 		if (IS_ERR_OR_NULL(*reg_ptr)) {
 			pr_err("%s: %s get failed\n", __func__,
@@ -506,6 +527,7 @@ int msm_camera_config_single_vreg(struct device *dev,
 					goto vreg_set_opt_mode_fail;
 				}
 			}
+		}
 		}
 		rc = regulator_enable(*reg_ptr);
 		if (rc < 0) {
