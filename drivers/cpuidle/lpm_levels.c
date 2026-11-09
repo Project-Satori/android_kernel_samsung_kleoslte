@@ -30,6 +30,12 @@
 #include <soc/qcom/pm.h>
 #include <soc/qcom/rpm-notifier.h>
 #include <soc/qcom/event_timer.h>
+#include <linux/regulator/consumer.h>
+#include <linux/pinctrl/sec-pinmux.h>
+#include <linux/qpnp/pin.h>
+#ifdef CONFIG_SEC_GPIO_DVS
+#include <linux/secgpio_dvs.h>
+#endif
 
 #define SCLK_HZ (32768)
 
@@ -118,6 +124,12 @@ module_param_named(
 static int msm_pm_sleep_time_override;
 module_param_named(sleep_time_override,
 	msm_pm_sleep_time_override, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
+#ifdef CONFIG_SEC_PM_DEBUG
+static int msm_pm_sleep_sec_debug;
+module_param_named(secdebug,
+	msm_pm_sleep_sec_debug, int, S_IRUGO | S_IWUSR | S_IWGRP);
+#endif
 
 static struct cpumask num_powered_cores;
 static struct hrtimer lpm_hrtimer;
@@ -831,6 +843,34 @@ static int lpm_suspend_prepare(void)
 
 	suspend_in_progress = true;
 	msm_mpm_suspend_prepare();
+
+#ifdef CONFIG_SEC_GPIO_DVS
+	/************************ Caution !!! ****************************
+	 * This functiongit a must be located in appropriate SLEEP position
+	 * in accordance with the specification of each BB vendor.
+	 ************************ Caution !!! ****************************/
+	gpio_dvs_check_sleepgpio();
+#ifdef SECGPIO_SLEEP_DEBUGGING
+	/************************ Caution !!! ****************************/
+	/* This func. must be located in an appropriate position for GPIO SLEEP debugging
+     * in accordance with the specification of each BB vendor, and
+     * the func. must be called after calling the function "gpio_dvs_check_sleepgpio"
+     */
+	/************************ Caution !!! ****************************/
+	gpio_dvs_set_sleepgpio();
+#endif
+#endif
+
+#ifdef CONFIG_SEC_PM
+	regulator_showall_enabled();
+#endif
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	if (msm_pm_sleep_sec_debug) {
+		msm_gpio_print_enabled();
+		qpnp_debug_suspend_show();
+	}
+#endif
 
 	return 0;
 }
