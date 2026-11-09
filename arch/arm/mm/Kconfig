@@ -944,3 +944,9 @@ config STRICT_MEMORY_RWX
 	  1M boundaries (because their permissions are different and
 	  splitting the 1M pages into 4K ones causes TLB performance
 	  problems), wasting memory.
+
+config DEBUG_CMA_TRACE
+	bool "DEBUG CMA TRACE"
+	default n
+	help
+	  This option allows the cma debug code

@@ -37,7 +37,14 @@ char *memtype_name[] = {
 	"EBI0",
 	"EBI1"
 };
-
+#ifdef CONFIG_TIMA_RKP
+void invalidate_caches(unsigned long vstart,
+ 	unsigned long length, unsigned long pstart)
+{
+	dmac_inv_range((void *)vstart, (void *) (vstart + length));		
+	outer_inv_range(pstart, pstart + length);
+}
+#endif
 static int __init check_for_compat(unsigned long node)
 {
 	char **start = __compat_exports_start;

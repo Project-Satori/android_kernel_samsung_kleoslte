@@ -36,6 +36,10 @@
 #include <asm/tls.h>
 #include <asm/system_misc.h>
 
+#ifdef CONFIG_SEC_DEBUG
+#include <mach/sec_debug.h>
+#endif
+
 #include <trace/events/exception.h>
 
 static const char *handler[]= {
@@ -211,6 +215,13 @@ static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 }
 #endif
 
+void dump_stack(void)
+{
+	dump_backtrace(NULL, NULL);
+}
+
+EXPORT_SYMBOL(dump_stack);
+
 void show_stack(struct task_struct *tsk, unsigned long *sp)
 {
 	dump_backtrace(NULL, tsk);
@@ -253,6 +264,20 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 		TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk), end_of_stack(tsk));
 
 	if (!user_mode(regs) || in_interrupt()) {
+#ifndef CONFIG_SEC_DEBUG
+		dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
+			 THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+#else
+		if (THREAD_SIZE + (unsigned long)task_stack_page(tsk) - regs->ARM_sp
+			> THREAD_SIZE) {
+			dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
+					THREAD_SIZE/4 + regs->ARM_sp);
+		} else {
+			dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
+					THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+		}
+#endif
+
 		dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
 			 THREAD_SIZE + (unsigned long)task_stack_page(tsk));
 		dump_backtrace(regs, tsk);
@@ -320,12 +345,16 @@ void die(const char *str, struct pt_regs *regs, int err)
 	enum bug_trap_type bug_type = BUG_TRAP_TYPE_NONE;
 	unsigned long flags = oops_begin();
 	int sig = SIGSEGV;
-
+#ifdef CONFIG_SEC_DEBUG
+	secdbg_sched_msg("!!die!!");
+#endif
 	if (!user_mode(regs))
 		bug_type = report_bug(regs->ARM_pc, regs);
 	if (bug_type != BUG_TRAP_TYPE_NONE)
 		str = "Oops - BUG";
-
+#ifdef CONFIG_SEC_DEBUG_SUBSYS
+	sec_debug_save_die_info(str, regs);
+#endif
 	if (__die(str, err, regs))
 		sig = 0;
 

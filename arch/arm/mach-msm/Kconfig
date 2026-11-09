@@ -317,6 +317,259 @@ config ARCH_MSMSAMARIUM
 	select MSM_IRQ
 endmenu
 
+config SEC_FACTORY
+    bool "when it comes to sec factory mode"
+    default n
+		help
+          It will support a sec factory mode
+
+config SEC_KLEOS_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung KLEOS Project"
+		help
+		  Support for Samsung Kleos Project
+
+config MACH_KLEOS_EUR
+	depends on SEC_KLEOS_PROJECT
+		default n
+		bool "Samsung KLEOS Europe Open"
+		help
+		  Support for Samsung KLEOS Europe Open device.
+
+config MACH_KLEOS_CMCC
+	depends on SEC_KLEOS_PROJECT
+		default n
+		bool "Samsung KLEOS CMCC Open"
+		help
+		  Support for Samsung KLEOS CMCC Open device.
+
+config MACH_KLEOS_CHN_OPEN
+	depends on SEC_KLEOS_PROJECT
+		default n
+		bool "Samsung KLEOS CHN Open"
+		help
+		  Support for Samsung KLEOS CHN Open device.
+
+config SEC_A3_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung A3 Project"
+		help
+		  Support for Samsung A3 Project
+
+config MACH_A3_CHN_OPEN
+	depends on SEC_A3_PROJECT
+		default n
+		bool "Samsung A3 China Open"
+		help
+		  Support for Samsung A3 China Open device.
+
+config MACH_A3_CHN_TW
+	depends on SEC_A3_PROJECT
+		default n
+		bool "Samsung A3 China TW"
+		help
+		  Support for Samsung A3 China TW device.
+
+config MACH_A3_CHN_CTC
+	depends on SEC_A3_PROJECT
+		default n
+		bool "Samsung A3 China CTC"
+		help
+		  Support for Samsung A3 China CTC device.
+
+config SEC_A3_EUR_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung A3 EUR Project"
+		help
+		  Support for Samsung A3 EUR Project
+
+config MACH_A3_EUR_OPEN
+	depends on SEC_A3_EUR_PROJECT
+		default n
+		bool "Samsung A3 EUR Open"
+		help
+		  Support for Samsung A3 EUR Open device.
+
+config SEC_A33G_EUR_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung A33G EUR Project"
+		help
+		  Support for Samsung A33G EUR Project
+
+config MACH_A33G_EUR_OPEN
+	depends on SEC_A33G_EUR_PROJECT
+		default n
+		bool "Samsung A33G EUR Open"
+		help
+		  Support for Samsung A33G EUR Open device.
+
+config SEC_ROSSA_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung ROSSA Project"
+		help
+		  Support for Samsung Rossa Project
+
+config MACH_ROSSA_CMCC
+	depends on SEC_ROSSA_PROJECT
+		default n
+		bool "Samsung ROSSA China"
+		help
+		  Support for Samsung ROSSA China device.
+
+config MACH_ROSSA_CTC
+	depends on SEC_ROSSA_PROJECT
+		default n
+		bool "Samsung ROSSA China"
+		help
+		  Support for Samsung ROSSA China device.
+
+config MACH_ROSSA_AUS
+	depends on SEC_ROSSA_PROJECT
+		default n
+		bool "Samsung ROSSA AUS"
+		help
+		  Support for Samsung ROSSA AUS device.
+
+config MACH_ROSSA_SPR
+	depends on SEC_ROSSA_PROJECT
+		default n
+		bool "Samsung ROSSA Sprint"
+		help
+		  Support for Samsung ROSSA Sprint device.
+
+config MACH_ROSSA_TFN
+	depends on SEC_ROSSA_PROJECT
+		default n
+		bool "Samsung ROSSA Tracfone"
+		help
+		  Support for Samsung ROSSA Tracfone device.
+
+config SEC_FORTUNA_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung FORTUNA Project"
+		help
+		  Support for Samsung Fortuna Project
+
+config USER_RESET_DEBUG
+        bool "KOR reset reason debug feature in user version"
+        default n
+        help
+          This option enables debugging log for B10 project.
+          This option provides reset history log in user version.
+          This option enable proc/reset_reason support
+          It's only support KOR Model
+
+config MACH_FORTUNA_CMCC
+	depends on SEC_FORTUNA_PROJECT
+		default n
+		bool "Samsung FORTUNA China"
+		help
+		  Support for Samsung FORTUNA China device.
+
+config MACH_FORTUNA_CU
+	depends on SEC_FORTUNA_PROJECT
+		default n
+		bool "Samsung FORTUNA China"
+		help
+		  Support for Samsung FORTUNA China device.
+
+config MACH_FORTUNA_CTC
+	depends on SEC_FORTUNA_PROJECT
+		default n
+		bool "Samsung FORTUNA China"
+		help
+		  Support for Samsung FORTUNA China device.
+
+config MACH_FORTUNA_CHN_ZT
+	depends on SEC_FORTUNA_PROJECT
+		default n
+		bool "Samsung FORTUNA China TW"
+		help
+		  Support for Samsung FORTUNA China TW device.
+
+config MACH_FORTUNA3G_EUR
+	depends on SEC_FORTUNA_PROJECT
+		default n
+		bool "Samsung FORTUNA 3G Europe Open "
+		help
+		  Support for Samsung FORTUNA 3G Europe Open device.
+
+config MACH_FORTUNA3G_LTN_DTV
+	depends on SEC_FORTUNA_PROJECT
+		default n
+		bool "Samsung FORTUNA 3G Latin DTV "
+		help
+		  Support for Samsung FORTUNA 3G Europe Open device.
+
+config MACH_FORTUNA_SEA_OPEN
+	depends on SEC_FORTUNA_PROJECT
+		default n
+		bool "Samsung FORTUNA SEA Open "
+		help
+		  Support for Samsung FORTUNA SEA Open device.
+
+config SEC_GPEN_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung GPEN Project"
+		help
+		  Support for Samsung GPEN LTE Project
+
+config MACH_GPEN_EUR
+	depends on SEC_GPENLTE_PROJECT
+		default n
+		bool "Samsung GPEN Europe Open"
+		help
+		  Support for Samsung GPEN Europe Open device.
+
+config SEC_VIVALTO_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung VIVALTO Project"
+		help
+		  Support for Samsung VIVALTO Project
+
+config MACH_VIVALTO_AUS
+	depends on SEC_VIVALTO_PROJECT
+		default n
+		bool "Samsung VIVALTO AUS XSA"
+		help
+		  Support for Samsung VIVALTO AUS XSA device.
+
+config SEC_HEAT_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung HEAT Project"
+		help
+		  Support for Samsung Kleos Project
+
+config MACH_HEAT_EUR
+	depends on SEC_HEAT_PROJECT
+		default n
+		bool "Samsung HEAT Europe Open"
+		help
+		  Support for Samsung HEAT Europe Open device.
+
+config SEC_O1_PROJECT
+	depends on ARCH_MSM8916
+		default n
+		bool "Samsung O1 Project"
+		help
+		  Support for Samsung O1 Project
+
+config MACH_O1_CHN_OPEN
+	depends on SEC_O1_PROJECT
+		default n
+		bool "Samsung O1 China Open"
+		help
+		  Support for Samsung O1 China Open device.
+
 config MSM_KRAIT_TBB_ABORT_HANDLER
 	bool "Krait TBB/TBH data abort handler"
 	depends on ARCH_MSM_KRAIT
@@ -1063,6 +1316,102 @@ config MSM_XPU_ERR_FATAL
 	help
 	 Select if XPU violations have to be configured as fatal errors.
 
+config TIMA_RKP
+       bool "Enable RKP (Realtime Kernel Protection) TIMA feature"
+       default n
+
+config TIMA_RKP_30
+       bool "Enable RKP TIMA 3.0 features"
+       depends on (ARCH_MSM8974PRO || ARCH_MSM8226 || ARCH_MSM8926 || ARCH_MSM8926_LTE)
+       depends on TIMA_RKP
+       default y
+       help
+         RKP 3.0 features, enabled for msm8974pro only
+
+config TIMA_RKP_COHERENT_TT
+       bool
+       depends on TIMA_RKP_30
+       depends on ARCH_MSM8974PRO
+       default y 
+       help
+         RKP cache coherency feature- depends on corresponding TZ RKP code!!!
+
+config TIMA_RKP_L1_TABLES
+       bool
+       depends on TIMA_RKP
+       default y
+       help
+         TIMA taking over management of L1 tables.
+
+config TIMA_RKP_L2_TABLES
+       bool
+       depends on TIMA_RKP
+       default y
+       help
+         TIMA taking over management L2 tables too.
+
+config TIMA_RKP_L2_GROUP
+	bool
+	depends on TIMA_RKP_L2_TABLES
+	depends on TIMA_RKP_COHERENT_TT
+	default y
+	help
+	 TIMA grouping page table writes; do only with cache coherence
+
+config TIMA_RKP_LAZY_MMU
+	bool
+	depends on TIMA_RKP_L2_TABLES
+	default y
+	help
+	 TIMA lazy MMU for L2 pages
+
+config 	TIMA_RKP_EMUL_CP15_INSTR
+	bool
+	depends on TIMA_RKP_30
+	depends on ARCH_MSM8974PRO
+	default y
+	help
+	 RKP emulates CP15 instructions affecting MMU
+
+config TIMA_RKP_DEBUG
+       bool
+       depends on TIMA_RKP
+       default n
+       help
+         TIMA debug infrastructure.
+
+config TIMA_LKMAUTH
+       bool "Enable LKM authentication TIMA feature"
+       default n
+       help
+         TIMA authenticates loaded kernel modules. Disable it if you don't
+         want TIMA enabled.
+
+config TIMA_LKMAUTH_CODE_PROT
+       bool
+       depends on TIMA_LKMAUTH
+       default y
+       help
+         When enabled, this feature will mark all Executable sections in an
+         LKM as RO
+
+config TIMA_TEST_INFRA
+       tristate "Testing infrastructure for TIMA"
+       default n
+       help
+         Kernel bits of the TIMA test infrastructure
+
+config TIMA_UEVENT
+       bool "Uevent message propagation for TIMA"
+       default n
+       help
+         Uevent messages for TIMA PKM/LKM
+
+config TIMA_LOG
+       bool "Log dumping support for TIMA"
+       default n
+       help
+         TIMA Log dumping support
 config KRAIT_REGULATOR
 	bool "Support Kraits powered via ganged regulators in the pmic"
 	help
@@ -1078,4 +1427,27 @@ config MSM_PP2S_FEMTO
 	  Support for being notified relative to a PP2S pulse
 	  Select Y if you want this notification to manifest.
 	  If unsure, select N.
+
+config SEC_THERMISTOR
+        bool "Use external thermistor near AP for checking temprature"
+        default n
+        help
+        Use thermistor driver for checking temperature near AP chip.
+
+config RTC_AUTO_PWRON
+        bool "RTC Auto Power on PM8x16 PMICs"
+        depends on ARCH_MSM8916
+        default n
+        help
+          Support for the auto power on alarm on the PM8X16 PMIC.
+          Say Y if you want to enable this feature.
+
+config RTC_AUTO_PWRON_PARAM
+        bool "RTC Auto Power on with param PM8x16 PMICs"
+        depends on RTC_AUTO_PWRON
+        default n
+        help
+          This option is used to prevent invalid RTC alarm power on.
+          Say Y if you want to enable this feature.
+
 endif
