@@ -546,7 +546,7 @@ unsigned long dma_alloc_from_contiguous(struct device *dev, int count,
 	if (align > CONFIG_CMA_ALIGNMENT)
 		align = CONFIG_CMA_ALIGNMENT;
 
-	pr_debug("%s(cma %p, count %d, align %d)\n", __func__, (void *)cma,
+	pr_info("%s(cma %p, count %d, align %d)\n", __func__, (void *)cma,
 		 count, align);
 
 	if (!count)
@@ -581,6 +581,7 @@ unsigned long dma_alloc_from_contiguous(struct device *dev, int count,
 		if (ret == 0) {
 			break;
 		} else if (ret != -EBUSY) {
+			pr_err("%s %d error, pfn: %lx, (%d)\n", __func__, __LINE__, pfn, ret); 
 			pfn = 0;
 			clear_cma_bitmap(cma, pfn, count);
 			break;
@@ -589,13 +590,13 @@ unsigned long dma_alloc_from_contiguous(struct device *dev, int count,
 		tries++;
 		trace_dma_alloc_contiguous_retry(tries);
 
-		pr_debug("%s(): memory range at %p is busy, retrying\n",
+		pr_info("%s(): memory range at %p is busy, retrying\n",
 			 __func__, pfn_to_page(pfn));
 		/* try again with a bit different memory target */
 		start = pageno + mask + 1;
 	}
 
-	pr_debug("%s(): returned %lx\n", __func__, pfn);
+	pr_info("%s(): returned %lx\n", __func__, pfn);
 	return pfn;
 }
 
