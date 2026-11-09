@@ -794,8 +794,17 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	info = SHMEM_I(inode);
 	if (info->flags & VM_LOCKED)
 		goto redirty;
+#ifdef CONFIG_RUNTIME_COMPCACHE
+	/*
+	 * Modification for compcache
+	 * shmem_writepage can be reason of kernel panic when using swap.
+	 * This modification prevent using swap by shmem.
+	 */
+	goto redirty;
+#else
 	if (!total_swap_pages)
 		goto redirty;
+#endif
 
 	/*
 	 * shmem_backing_dev_info's capabilities prevent regular writeback or
@@ -1357,6 +1366,18 @@ out_nomem:
 static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	file_accessed(file);
+#ifdef CONFIG_TIMA_RKP
+	if (vma->vm_end - vma->vm_start) {
+		/* iommu optimization- needs to be turned ON from
+		* the tz side.
+		*/
+		cpu_v7_tima_iommu_opt(vma->vm_start, vma->vm_end, (unsigned long)vma->vm_mm->pgd);
+		__asm__ __volatile__ (
+		"mcr    p15, 0, r0, c8, c3, 0\n"
+		"dsb\n"
+		"isb\n");
+	}
+#endif
 	vma->vm_ops = &shmem_vm_ops;
 	return 0;
 }
