@@ -17,11 +17,15 @@
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/init.h>
+#include <linux/delay.h>
 
 #include <asm/cacheflush.h>
 #include <asm/compiler.h>
 
 #include <soc/qcom/scm.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <mach/sec_debug.h>
+#endif
 
 #define SCM_ENOMEM		-5
 #define SCM_EOPNOTSUPP		-4
@@ -29,6 +33,7 @@
 #define SCM_EINVAL_ARG		-2
 #define SCM_ERROR		-1
 #define SCM_INTERRUPTED		1
+#define SCM_EBUSY		-55
 
 static DEFINE_MUTEX(scm_lock);
 
@@ -139,7 +144,8 @@ static inline void *scm_get_response_buffer(const struct scm_response *rsp)
 
 static int scm_remap_error(int err)
 {
-	pr_err("scm_call failed with error code %d\n", err);
+	if (err != SCM_EBUSY)
+		pr_err("scm_call failed with error code %d\n", err);
 	switch (err) {
 	case SCM_ERROR:
 		return -EIO;
@@ -150,6 +156,8 @@ static int scm_remap_error(int err)
 		return -EOPNOTSUPP;
 	case SCM_ENOMEM:
 		return -ENOMEM;
+	case SCM_EBUSY:
+		return -EBUSY;
 	}
 	return -EINVAL;
 }
@@ -178,11 +186,30 @@ static u32 smc(u32 cmd_addr)
 	return r0;
 }
 
+#ifdef CONFIG_TIMA_LKMAUTH
+#if defined CONFIG_ARCH_MSM8916
+static void __wrap_flush_cache_all(void* vp)
+{
+	flush_cache_all();
+}
+#endif
+
+pid_t pid_from_lkm = -1;
+#endif
 static int __scm_call(const struct scm_command *cmd)
 {
+#ifdef CONFIG_TIMA_LKMAUTH
+	int flush_all_need;
+#endif
 	int ret;
 	u32 cmd_addr = virt_to_phys(cmd);
 
+#ifdef CONFIG_TIMA_LKMAUTH
+	/*
+	 * in case of QSEE command
+	 */
+	flush_all_need = ((cmd->id & 0x0003FC00) == (252 << 10));
+#endif
 	/*
 	 * Flush the command buffer so that the secure world sees
 	 * the correct data.
@@ -190,6 +217,17 @@ static int __scm_call(const struct scm_command *cmd)
 	__cpuc_flush_dcache_area((void *)cmd, cmd->len);
 	outer_flush_range(cmd_addr, cmd_addr + cmd->len);
 
+#ifdef CONFIG_TIMA_LKMAUTH
+	if (flush_all_need && (pid_from_lkm == current_thread_info()->task->pid)) {
+		flush_cache_all();
+
+#if defined CONFIG_ARCH_MSM8916
+		smp_call_function((void (*)(void *))__wrap_flush_cache_all, NULL, 1);
+#endif
+
+		outer_flush_all();
+	}
+#endif
 	ret = smc(cmd_addr);
 	if (ret < 0)
 		ret = scm_remap_error(ret);
@@ -259,9 +297,18 @@ static int scm_call_common(u32 svc_id, u32 cmd_id, const void *cmd_buf,
 	if (cmd_buf)
 		memcpy(scm_get_command_buffer(scm_buf), cmd_buf, cmd_len);
 
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_secure_log(svc_id, cmd_id);
+#endif
+
 	mutex_lock(&scm_lock);
 	ret = __scm_call(scm_buf);
 	mutex_unlock(&scm_lock);
+
+#ifdef CONFIG_SEC_DEBUG	
+	sec_debug_secure_log(svc_id, cmd_id);
+#endif
+
 	if (ret)
 		return ret;
 
@@ -328,11 +375,15 @@ int scm_call_noalloc(u32 svc_id, u32 cmd_id, const void *cmd_buf,
  * response buffers is taken care of by scm_call; however, callers are
  * responsible for any other cached buffers passed over to the secure world.
  */
+ 
+#define SCM_EBUSY_WAIT_MS	30
+#define SCM_EBUSY_MAX_RETRY	20
+
 int scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
 		void *resp_buf, size_t resp_len)
 {
 	struct scm_command *cmd;
-	int ret;
+	int ret, retry_count = 0;
 	size_t len = SCM_BUF_LEN(cmd_len, resp_len);
 
 	if (cmd_len > len || resp_len > len)
@@ -342,8 +393,18 @@ int scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
 	if (!cmd)
 		return -ENOMEM;
 
-	ret = scm_call_common(svc_id, cmd_id, cmd_buf, cmd_len, resp_buf,
+	do {
+		memset(cmd, 0x0, PAGE_ALIGN(len));
+		ret = scm_call_common(svc_id, cmd_id, cmd_buf, cmd_len, resp_buf,
 				resp_len, cmd, len);
+			if (ret == -EBUSY)
+			msleep(SCM_EBUSY_WAIT_MS);
+			
+		} while (ret == -EBUSY && (retry_count++ < SCM_EBUSY_MAX_RETRY));
+
+	if (ret == -EBUSY)
+		panic("scm_call timeout with SCM_EBUSY, retry_count = %d, delay = %d ms", retry_count, SCM_EBUSY_WAIT_MS);
+		
 	kfree(cmd);
 	return ret;
 }

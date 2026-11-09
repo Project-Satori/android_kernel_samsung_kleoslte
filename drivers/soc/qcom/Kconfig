@@ -414,6 +414,10 @@ config MAXIMUM_CURRENT_THROTTLING
 	  turn on/off CPU based current throttling by setting the
 	  credit/upper limit in the CPU registers.
 
+config TRACE_MODEM_MEM_FAIL
+	bool "Force upload in case of failure to load modem auth mem"
+	default n
+
 source "drivers/soc/qcom/memshare/Kconfig"
 
 endif # ARCH_MSM

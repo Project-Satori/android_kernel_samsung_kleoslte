@@ -243,6 +243,20 @@ int pil_mss_shutdown(struct pil_desc *pil)
 	return ret;
 }
 
+int pil_mss_deinit_image(struct pil_desc *pil) {
+	struct modem_data *drv = dev_get_drvdata(pil->dev);
+	int ret = 0;
+
+	ret = pil_mss_shutdown(pil);
+
+	/* In case of any failure where reclaim MBA memory
+	 * could not happen, free the memory here */
+	if (drv->q6->mba_virt)
+		dma_free_coherent(&drv->mba_mem_dev, drv->q6->mba_size,
+				drv->q6->mba_virt, drv->q6->mba_phys);
+	return ret;
+}
+
 int pil_mss_make_proxy_votes(struct pil_desc *pil)
 {
 	int ret;
@@ -381,6 +395,10 @@ int pil_mss_reset_load_mba(struct pil_desc *pil)
 	if (!mba_virt) {
 		dev_err(pil->dev, "MBA metadata buffer allocation failed\n");
 		ret = -ENOMEM;
+#ifdef CONFIG_TRACE_MODEM_MEM_FAIL
+		/*Need ramdump on exact alloc failure case for MODEM_MBA_AUTH 1M*/
+                BUG_ON(1);
+#endif
 		goto err_dma_alloc;
 	}
 
@@ -426,7 +444,11 @@ static int pil_msa_auth_modem_mdt(struct pil_desc *pil, const u8 *metadata,
 	mdata_virt = dma_alloc_coherent(&drv->mba_mem_dev, size, &mdata_phys,
 					GFP_KERNEL);
 	if (!mdata_virt) {
-		dev_err(pil->dev, "MBA metadata buffer allocation failed\n");
+		dev_err(pil->dev, "MBA(mdt)metadata buffer allocation failed\n");
+#ifdef CONFIG_TRACE_MODEM_MEM_FAIL
+		/*Need ramdump on exact alloc failure case for MODEM_mdt_AUTH 38K*/
+                BUG_ON(1);
+#endif
 		return -ENOMEM;
 	}
 	memcpy(mdata_virt, metadata, size);
@@ -515,10 +537,13 @@ static int pil_msa_mba_auth(struct pil_desc *pil)
 		ret = -EINVAL;
 	}
 
-	if (drv->q6 && drv->q6->mba_virt)
+	if (drv->q6 && drv->q6->mba_virt) {
 		/* Reclaim MBA memory. */
 		dma_free_coherent(&drv->mba_mem_dev, drv->q6->mba_size,
 					drv->q6->mba_virt, drv->q6->mba_phys);
+		drv->q6->mba_virt = NULL;
+	}
+
 	if (ret)
 		modem_log_rmb_regs(drv->rmb_base);
 	return ret;
@@ -546,7 +571,7 @@ struct pil_reset_ops pil_msa_mss_ops_selfauth = {
 	.proxy_unvote = pil_mss_remove_proxy_votes,
 	.verify_blob = pil_msa_mba_verify_blob,
 	.auth_and_reset = pil_msa_mba_auth,
-	.deinit_image = pil_mss_shutdown,
+	.deinit_image = pil_mss_deinit_image,
 	.shutdown = pil_mss_shutdown,
 };
 
