@@ -9,7 +9,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#define DEBUG
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
@@ -58,11 +58,14 @@ static int msm_pri_mi2s_rx_ch = 1;
 
 static int msm_proxy_rx_ch = 2;
 
+atomic_t quat_mi2s_rsc_ref;
+
 static int msm8x16_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 					bool dapm);
 static int msm_snd_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 					bool dapm);
 
+#ifndef CONFIG_SAMSUNG_JACK
 static struct wcd_mbhc_config mbhc_cfg = {
 	.read_fw_bin = false,
 	.calibration = NULL,
@@ -109,6 +112,7 @@ void *def_tapan_mbhc_cal(void)
 		pr_err("%s: out of memory\n", __func__);
 		return NULL;
 	}
+}
 
 #define S(X, Y) ((WCD9XXX_MBHC_CAL_GENERAL_PTR(tapan_cal)->X) = (Y))
 	S(t_ldoh, 100);
@@ -171,6 +175,13 @@ void *def_tapan_mbhc_cal(void)
 	gain[1] = 14;
 	return tapan_cal;
 }
+#else /* not CONFIG_SAMSUNG_JACK */
+//Enabling the MIC Bias Voltage of Earmic
+static struct snd_soc_jack hs_jack;
+static struct mutex jack_mutex;
+#endif /* CONFIG_SAMSUNG_JACK */
+
+
 static struct afe_clk_cfg mi2s_rx_clk = {
 	AFE_API_VERSION_I2S_CONFIG,
 	Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ,
@@ -544,9 +555,51 @@ static int mi2s_clk_ctl(struct snd_pcm_substream *substream, bool enable)
 	return ret;
 }
 
+#ifdef CONFIG_AUDIO_SPEAKER_OUT_NXP_AMP_ENABLE
+extern unsigned int system_rev;
+int msm_q6_enable_mi2s_clocks(bool enable)
+{
+	union afe_port_config port_config;
+	int rc = 0;
+
+	printk(KERN_ERR"set msm_q6_enable_mi2s_clocks system_rev=%d enable=%d\n", system_rev, enable);
+	if(enable) {
+		port_config.i2s.channel_mode = AFE_PORT_I2S_SD1;
+		port_config.i2s.mono_stereo = MSM_AFE_CH_STEREO;
+		port_config.i2s.data_format= 0;
+		port_config.i2s.bit_width = 16;
+		port_config.i2s.reserved = 0;
+		port_config.i2s.i2s_cfg_minor_version = AFE_API_VERSION_I2S_CONFIG;
+		port_config.i2s.sample_rate = 48000;
+		port_config.i2s.ws_src = 1;
+
+		rc = afe_port_start(AFE_PORT_ID_QUATERNARY_MI2S_RX, &port_config, 48000);
+
+		if (IS_ERR_VALUE(rc)) {
+			printk(KERN_ERR"fail to open AFE port\n");
+			return -EINVAL;
+		}
+	} else {
+		rc = afe_close(AFE_PORT_ID_QUATERNARY_MI2S_RX);
+		if (IS_ERR_VALUE(rc)) {
+			printk(KERN_ERR"fail to close AFE port\n");
+			return -EINVAL;
+		}
+	}
+	return rc;
+}
+#endif
+
 static int ext_mi2s_clk_ctl(struct snd_pcm_substream *substream, bool enable)
 {
 	int ret = 0;
+
+#ifdef CONFIG_AUDIO_SPEAKER_OUT_NXP_AMP_ENABLE
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct msm8916_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+#endif
+
 	if (enable) {
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			mi2s_rx_clk.clk_val1 = Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ;
@@ -562,6 +615,10 @@ static int ext_mi2s_clk_ctl(struct snd_pcm_substream *substream, bool enable)
 		if (ret < 0)
 			pr_err("%s:afe_set_lpass_clock failed\n", __func__);
 
+#ifdef CONFIG_AUDIO_SPEAKER_OUT_NXP_AMP_ENABLE
+		if (pdata->ext_pa & QUAT_MI2S_ID)
+			msm_q6_enable_mi2s_clocks(true);
+#endif
 	} else {
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			mi2s_rx_clk.clk_val1 = Q6AFE_LPASS_IBIT_CLK_DISABLE;
@@ -577,6 +634,10 @@ static int ext_mi2s_clk_ctl(struct snd_pcm_substream *substream, bool enable)
 		if (ret < 0)
 			pr_err("%s:afe_set_lpass_clock failed\n", __func__);
 
+#ifdef CONFIG_AUDIO_SPEAKER_OUT_NXP_AMP_ENABLE
+		if (pdata->ext_pa & QUAT_MI2S_ID)
+			msm_q6_enable_mi2s_clocks(false);
+#endif
 	}
 	return ret;
 }
@@ -643,7 +704,11 @@ static int msm_snd_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 			afe_set_digital_codec_core_clock(
 					AFE_PORT_ID_QUATERNARY_MI2S_RX,
 					&pdata->digital_cdc_clk);
+#ifndef CONFIG_WCD9306_CODEC
+			msm8x16_wcd_mclk_enable(codec, 1, dapm);
+#else
 			tapan_mclk_enable(codec, 1, dapm);
+#endif
 		}
 	} else {
 		if (atomic_dec_return(&pdata->mclk_rsc_ref) == 0) {
@@ -652,7 +717,12 @@ static int msm_snd_enable_codec_ext_clk(struct snd_soc_codec *codec, int enable,
 					AFE_PORT_ID_PRIMARY_MI2S_RX,
 					&pdata->digital_cdc_clk);
 			pdata->digital_cdc_clk.clk_val = 0;
+#ifndef CONFIG_WCD9306_CODEC
+			msm8x16_wcd_mclk_enable(codec, 0, dapm);
+#else
 			tapan_mclk_enable(codec, 0, dapm);
+#endif
+
 			afe_set_digital_codec_core_clock(
 					AFE_PORT_ID_QUATERNARY_MI2S_RX,
 					&pdata->digital_cdc_clk);
@@ -902,6 +972,131 @@ static void msm_sec_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 	}
 }
 
+static void msm_quat_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
+{
+	int ret = 0;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct msm8916_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+
+	pr_debug("%s(): substream = %s  stream = %d, ext_pa = %d\n", __func__,
+		 substream->name, substream->stream, pdata->ext_pa);
+
+	if ((!pdata->codec_type) &&
+		((pdata->ext_pa & QUAT_MI2S_ID) == QUAT_MI2S_ID)) {
+		ret = ext_mi2s_clk_ctl(substream, false);
+		if (ret < 0)
+			pr_err("%s:clock disable failed\n", __func__);
+		if (atomic_read(&pdata->mclk_rsc_ref) > 0) {
+			atomic_dec(&pdata->mclk_rsc_ref);
+			pr_debug("%s: decrementing mclk_res_ref %d\n",
+					__func__,
+					atomic_read(&pdata->mclk_rsc_ref));
+		}
+		if (atomic_read(&quat_mi2s_rsc_ref) > 0)
+			atomic_dec(&quat_mi2s_rsc_ref);
+	}
+}
+
+static int conf_int_codec_mux_quat(struct msm8916_asoc_mach_data *pdata)
+{
+	int ret = 0;
+	int val = 0;
+	void __iomem *vaddr = NULL;
+
+	/* configure the Primary, Sec and Tert mux for Mi2S interface
+	 * slave select to invalid state, for machine mode this
+	 * should move to HW, I do not like to do it here
+	 */
+	vaddr = ioremap(LPASS_CSR_GP_IO_MUX_SPKR_CTL , 4);
+	if (!vaddr) {
+		pr_err("%s ioremap failure for addr %x",
+				__func__, LPASS_CSR_GP_IO_MUX_SPKR_CTL);
+		return -ENOMEM;
+	}
+	/* enable sec MI2S interface to TLMM GPIO */
+	val = ioread32(vaddr);
+	val = val | 0x00000002;
+	pr_debug("%s: quat mux val = %x\n", __func__, val);
+
+	iowrite32(val, vaddr);
+	iounmap(vaddr);
+	vaddr = ioremap(LPASS_CSR_GP_IO_MUX_MIC_CTL , 4);
+	if (!vaddr) {
+		pr_err("%s ioremap failure for addr %x",
+				__func__, LPASS_CSR_GP_IO_MUX_MIC_CTL);
+		return -ENOMEM;
+	}
+	/* enable QUAT MI2S interface to TLMM GPIO */
+	val = ioread32(vaddr);
+	val = val | 0x0002000E;
+	pr_debug("%s: QUAT mux configuration = %x\n", __func__, val);
+	iowrite32(val, vaddr);
+	iounmap(vaddr);
+	return ret;
+}
+
+static int msm_quat_mi2s_snd_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_codec *codec = rtd->codec;
+	struct msm8916_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+	int ret = 0;
+
+	pr_debug("%s(): substream = %s  stream = %d\n", __func__,
+		 substream->name, substream->stream);
+
+	if ((!pdata->codec_type) &&
+			((pdata->ext_pa & QUAT_MI2S_ID) == QUAT_MI2S_ID)) {
+		ret = conf_int_codec_mux_quat(pdata);
+		if (ret < 0) {
+			pr_err("%s: failed to conf internal codec mux\n",
+					__func__);
+			return ret;
+		}
+		ret = msm8x16_enable_codec_ext_clk(codec, 1, true);
+		if (ret < 0) {
+			pr_err("failed to enable mclk\n");
+			return ret;
+		}
+
+		ret = ext_mi2s_clk_ctl(substream, true);
+		if (ret < 0) {
+			pr_err("%s: failed to enable bit clock\n",
+					__func__);
+			goto err;
+		}
+		ret = pinctrl_select_state(pinctrl_info.pinctrl,
+				pinctrl_info.cdc_lines_act);
+		if (ret < 0) {
+			pr_err("%s: failed to select the gpio's state\n",
+					__func__);
+			goto err1;
+		}
+	} else {
+		pr_err("%s: error codec type\n", __func__);
+	}
+
+	if (atomic_inc_return(&quat_mi2s_rsc_ref) == 1) {	
+		ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_CBS_CFS);
+		if (ret < 0)
+			pr_err("%s: set fmt cpu dai failed\n", __func__);
+	}
+err1:
+	ret = sec_mi2s_sclk_ctl(substream, false);
+	if (ret < 0)
+		pr_err("%s:failed to disable sclk\n", __func__);
+
+err:
+	ret = msm8x16_enable_codec_ext_clk(codec, 0, true);
+	if (ret < 0)
+		pr_err("%s:failed to disable mclk\n", __func__);
+
+	return ret;
+}
+
 static int conf_int_codec_mux(struct msm8916_asoc_mach_data *pdata)
 {
 	int ret = 0;
@@ -919,8 +1114,10 @@ static int conf_int_codec_mux(struct msm8916_asoc_mach_data *pdata)
 		return -ENOMEM;
 	}
 	val = ioread32(vaddr);
-	val = val | 0x00030300;
+	val = val | 0x00010002;
 	iowrite32(val, vaddr);
+	pr_debug("%s: spkr after mux addr = %x val =%x\n", __func__,
+			LPASS_CSR_GP_IO_MUX_SPKR_CTL, ioread32(vaddr));
 	iounmap(vaddr);
 	vaddr = ioremap(LPASS_CSR_GP_IO_MUX_MIC_CTL , 4);
 	if (!vaddr) {
@@ -931,6 +1128,8 @@ static int conf_int_codec_mux(struct msm8916_asoc_mach_data *pdata)
 	val = ioread32(vaddr);
 	val = val | 0x00220002;
 	iowrite32(val, vaddr);
+	pr_debug("%s: mic after mux addr = %x val =%x\n",
+		 __func__, LPASS_CSR_GP_IO_MUX_MIC_CTL, ioread32(vaddr));
 	iounmap(vaddr);
 	return ret;
 }
@@ -956,6 +1155,12 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 					__func__);
 			return ret;
 		}
+		ret = mi2s_clk_ctl(substream, true);
+		if (ret < 0) {
+			pr_err("%s: failed to enable sclk %d\n",
+					__func__, ret);
+			return ret;
+		}
 		ret =  msm8x16_enable_codec_ext_clk(codec, 1, true);
 		if (ret < 0) {
 			pr_err("failed to enable mclk\n");
@@ -963,13 +1168,6 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 		}
 		/* Enable the codec mclk config */
 		msm8x16_wcd_mclk_enable(codec, 1, true);
-		ret = mi2s_clk_ctl(substream, true);
-		if (ret < 0) {
-			pr_err("%s failed to enable the sclk %x\n",
-					__func__,
-					LPASS_CSR_GP_IO_MUX_SPKR_CTL);
-			return -ENOMEM;
-		}
 		ret = pinctrl_select_state(pinctrl_info.pinctrl,
 					pinctrl_info.cdc_lines_act);
 		if (ret < 0) {
@@ -1040,6 +1238,7 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 	return ret;
 }
 
+#ifndef CONFIG_SAMSUNG_JACK
 static void *def_msm8x16_wcd_mbhc_cal(void)
 {
 	void *msm8x16_wcd_cal;
@@ -1071,6 +1270,7 @@ static void *def_msm8x16_wcd_mbhc_cal(void)
 
 	return msm8x16_wcd_cal;
 }
+#endif /* not CONFIG_SAMSUNG_JACK */
 
 static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 {
@@ -1105,6 +1305,8 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	snd_soc_dapm_sync(dapm);
 
+	msm8x16_register_mclk_cb(codec, msm8x16_enable_codec_ext_clk);
+#ifndef CONFIG_SAMSUNG_JACK
 	mbhc_cfg.calibration = def_msm8x16_wcd_mbhc_cal();
 	if (mbhc_cfg.calibration) {
 		ret = msm8x16_wcd_hs_detect(codec, &mbhc_cfg);
@@ -1114,6 +1316,10 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 			return ret;
 		}
 	}
+#else /* not CONFIG_SAMSUNG_JACK */
+	hs_jack.codec = codec;
+	return 0;
+#endif /* CONFIG_SAMSUNG_JACK */
 
 	return ret;
 }
@@ -1151,6 +1357,7 @@ static int msm_audrx_init_wcd(struct snd_soc_pcm_runtime *rtd)
 
 	snd_soc_dapm_sync(dapm);
 
+#ifndef CONFIG_SAMSUNG_JACK
 	/* start mbhc */
 	wcd9xxx_mbhc_cfg.calibration = def_tapan_mbhc_cal();
 	if (wcd9xxx_mbhc_cfg.calibration) {
@@ -1158,14 +1365,60 @@ static int msm_audrx_init_wcd(struct snd_soc_pcm_runtime *rtd)
 	} else {
 		ret = -ENOMEM;
 	}
+#endif /* not CONFIG_SAMSUNG_JACK */
 	return ret;
 }
+
+static struct snd_soc_ops msm8x16_quat_mi2s_be_ops = {
+	.startup = msm_quat_mi2s_snd_startup,
+	.hw_params = msm_mi2s_snd_hw_params,
+	.shutdown = msm_quat_mi2s_snd_shutdown,
+};
 
 static struct snd_soc_ops msm8x16_sec_mi2s_be_ops = {
 	.startup = msm_sec_mi2s_snd_startup,
 	.hw_params = msm_mi2s_snd_hw_params,
 	.shutdown = msm_sec_mi2s_snd_shutdown,
 };
+
+//Enabling the MIC Bias Voltage of Earmic
+#ifdef CONFIG_SAMSUNG_JACK
+char *mic_bias_str=NULL;
+char *ext_mic_bias_str = "Headset Mic";
+char *int_mic_bias_str = "MIC BIAS2 Power External";
+void msm8x16_enable_ear_micbias(bool state)
+{
+	int nRetVal = 0;
+	struct snd_soc_jack *jack = &hs_jack;
+	struct snd_soc_codec *codec;
+	struct snd_soc_dapm_context *dapm;
+	char *str = mic_bias_str;
+
+	printk("%s : str: %s\n", __func__, str);
+
+	if (jack->codec == NULL) { /* audrx_init not yet called */
+		pr_err("%s codec==NULL\n", __func__);
+		return;
+	}
+	codec = jack->codec;
+	dapm = &codec->dapm;
+	mutex_lock(&jack_mutex);
+
+	if (state == 1) {
+		nRetVal = snd_soc_dapm_force_enable_pin(dapm, str);
+		pr_info("%s enable the codec  pin : %d with state :%d\n"
+				, __func__, nRetVal, state);
+	} else {
+		nRetVal = snd_soc_dapm_disable_pin(dapm, str);
+		pr_info("%s disable the codec  pin : %d with state :%d\n"
+				, __func__, nRetVal, state);
+	}
+
+	snd_soc_dapm_sync(dapm);
+	mutex_unlock(&jack_mutex);
+}
+EXPORT_SYMBOL(msm8x16_enable_ear_micbias);
+#endif /* CONFIG_SAMSUNG_JACK */
 
 static struct snd_soc_ops msm8x16_mi2s_be_ops = {
 	.startup = msm_mi2s_snd_startup,
@@ -1629,8 +1882,8 @@ static struct snd_soc_dai_link msm8x16_dai[] = {
 		.stream_name = "Secondary MI2S Playback",
 		.cpu_dai_name = "msm-dai-q6-mi2s.1",
 		.platform_name = "msm-pcm-routing",
-		.codec_name = "msm-stub-codec.1",
-		.codec_dai_name = "msm-stub-rx",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_SECONDARY_MI2S_RX,
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
@@ -1648,6 +1901,33 @@ static struct snd_soc_dai_link msm8x16_dai[] = {
 		.be_id = MSM_BACKEND_DAI_TERTIARY_MI2S_TX,
 		.be_hw_params_fixup = msm_tx_be_hw_params_fixup,
 		.ops = &msm8x16_mi2s_be_ops,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_QUAT_MI2S_RX,
+		.stream_name = "Quaternary MI2S Playback",
+		.cpu_dai_name = "msm-dai-q6-mi2s.3",
+		.platform_name = "msm-pcm-routing",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_QUATERNARY_MI2S_RX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ops = &msm8x16_quat_mi2s_be_ops,
+		.ignore_pmdown_time = 1, /* dai link has playback support */
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_QUAT_MI2S_TX,
+		.stream_name = "Quaternary MI2S Capture",
+		.cpu_dai_name = "msm-dai-q6-mi2s.3",
+		.platform_name = "msm-pcm-routing",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_QUATERNARY_MI2S_TX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ops = &msm8x16_quat_mi2s_be_ops,
 		.ignore_suspend = 1,
 	},
 	{
@@ -1849,6 +2129,7 @@ void disable_mclk(struct work_struct *work)
 	mutex_unlock(&pdata->cdc_mclk_mutex);
 }
 
+#ifndef CONFIG_SAMSUNG_JACK
 static bool msm8x16_swap_gnd_mic(struct snd_soc_codec *codec)
 {
 	struct snd_soc_card *card = codec->card;
@@ -1921,11 +2202,12 @@ static int msm8x16_setup_hs_jack(struct platform_device *pdev,
 	}
 	return 0;
 }
+#endif /* not CONFIG_SAMSUNG_JACK */
 
 int get_cdc_gpio_lines(struct pinctrl *pinctrl, int ext_pa)
 {
-	pr_debug("%s\n", __func__);
-	switch (ext_pa & SEC_MI2S_ID) {
+	pr_debug("%s: ext_pa   %d\n", __func__, ext_pa);
+	switch (ext_pa & (SEC_MI2S_ID | QUAT_MI2S_ID)) {
 	case SEC_MI2S_ID:
 		pinctrl_info.cdc_lines_sus = pinctrl_lookup_state(pinctrl,
 			"cdc_lines_sec_ext_sus");
@@ -1936,6 +2218,22 @@ int get_cdc_gpio_lines(struct pinctrl *pinctrl, int ext_pa)
 		}
 		pinctrl_info.cdc_lines_act = pinctrl_lookup_state(pinctrl,
 			"cdc_lines_sec_ext_act");
+		if (IS_ERR(pinctrl_info.cdc_lines_act)) {
+			pr_err("%s: Unable to get pinctrl disable state handle\n",
+								__func__);
+			return -EINVAL;
+		}
+		break;
+	case QUAT_MI2S_ID:
+		pinctrl_info.cdc_lines_sus = pinctrl_lookup_state(pinctrl,
+			"cdc_lines_quat_ext_sus");
+		if (IS_ERR(pinctrl_info.cdc_lines_sus)) {
+			pr_err("%s: Unable to get pinctrl disable state handle\n",
+								__func__);
+			return -EINVAL;
+		}
+		pinctrl_info.cdc_lines_act = pinctrl_lookup_state(pinctrl,
+			"cdc_lines_quat_ext_act");
 		if (IS_ERR(pinctrl_info.cdc_lines_act)) {
 			pr_err("%s: Unable to get pinctrl disable state handle\n",
 								__func__);
@@ -2056,6 +2354,8 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 
 	pdev->id = id;
 	dev_set_name(&pdev->dev, "%s.%d", "msm-snd-card", id);
+	/*sync up pdev->name & dev name*/
+	pdev->name = pdev->dev.kobj.name;
 
 	dev_dbg(&pdev->dev, "%s: dev name %s, id:%d\n", __func__,
 		 dev_name(&pdev->dev), pdev->id);
@@ -2143,6 +2443,7 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 					__func__, ret);
 			goto err;
 		}
+	card = &bear_cards[pdev->id];
 	}
 
 	ret = of_property_read_string(pdev->dev.of_node,
@@ -2154,10 +2455,18 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 	}
 	if (!strcmp(type, "external")) {
 		dev_dbg(&pdev->dev, "Headset is using external micbias\n");
+#ifdef CONFIG_SAMSUNG_JACK
+		mic_bias_str = ext_mic_bias_str;
+#else /* CONFIG_SAMSUNG_JACK */
 		mbhc_cfg.hs_ext_micbias = true;
+#endif /* not CONFIG_SAMSUNG_JACK */
 	} else {
 		dev_dbg(&pdev->dev, "Headset is using internal micbias\n");
+#ifdef CONFIG_SAMSUNG_JACK
+		mic_bias_str = int_mic_bias_str;
+#else /* CONFIG_SAMSUNG_JACK */
 		mbhc_cfg.hs_ext_micbias = false;
+#endif /* not CONFIG_SAMSUNG_JACK */
 	}
 
 	/* initialize the mclk */
@@ -2169,8 +2478,9 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 	/* Initialize loopback mode to false */
 	pdata->lb_mode = false;
 
+#ifndef CONFIG_SAMSUNG_JACK
 	msm8x16_setup_hs_jack(pdev, pdata);
-
+#endif /* not CONFIG_SAMSUNG_JACK */
 	card->dev = &pdev->dev;
 	platform_set_drvdata(pdev, card);
 	snd_soc_card_set_drvdata(card, pdata);
@@ -2182,6 +2492,7 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 	mutex_init(&pdata->cdc_mclk_mutex);
 	atomic_set(&pdata->mclk_rsc_ref, 0);
 	atomic_set(&pdata->mclk_enabled, false);
+	atomic_set(&quat_mi2s_rsc_ref, 0);
 
 	ret = snd_soc_of_parse_audio_routing(card,
 			"qcom,audio-routing");
@@ -2194,6 +2505,10 @@ static int msm8x16_asoc_machine_probe(struct platform_device *pdev)
 			ret);
 		goto err;
 	}
+
+#ifdef CONFIG_SAMSUNG_JACK
+	mutex_init(&jack_mutex);
+#endif /* CONFIG_SAMSUNG_JACK */
 	return 0;
 err:
 	devm_kfree(&pdev->dev, pdata);

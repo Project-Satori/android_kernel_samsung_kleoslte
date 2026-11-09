@@ -214,6 +214,8 @@ struct msm8x16_wcd_priv {
 	bool ear_pa_boost_set;
 	bool dec_active[NUM_DECIMATORS];
 	struct on_demand_supply on_demand_list[ON_DEMAND_SUPPLIES_MAX];
+	int (*mclk_cb_fn) (struct snd_soc_codec*, int, bool);
+	int micb_2_ref_cnt;	
 	/* mbhc module */
 	struct wcd_mbhc mbhc;
 	struct blocking_notifier_head notifier;
@@ -234,5 +236,10 @@ extern int msm8x16_register_notifier(struct snd_soc_codec *codec,
 extern int msm8x16_unregister_notifier(struct snd_soc_codec *codec,
 				     struct notifier_block *nblock);
 
+extern int msm8x16_enable_micbias2(struct snd_soc_codec *codec,
+		bool enable);
+
+extern void msm8x16_register_mclk_cb(struct snd_soc_codec *codec,
+		int (*mclk_cb_fn) (struct snd_soc_codec*, int, bool));
 #endif
 
