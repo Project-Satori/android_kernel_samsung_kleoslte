@@ -23,6 +23,10 @@
 #include <linux/syscore_ops.h>
 #include "pinctrl-msm.h"
 
+#include <linux/pinctrl/sec-pinmux.h>
+#include <linux/gpio.h>
+#include <linux/wakeup_reason.h>
+
 /* config translations */
 #define drv_str_to_rval(drv)	((drv >> 1) - 1)
 #define rval_to_drv_str(val)	((val + 1) << 1)
@@ -753,6 +757,32 @@ static int msm_tlmm_v4_gp_irq_suspend(void)
 	return 0;
 }
 
+void msm_tlmm_v4_gp_show_resume_irq()
+{
+	unsigned long irq_flags;
+	unsigned int virq = 0;
+	int i, intstat;
+	struct msm_tlmm_irq_chip *ic = &msm_tlmm_v4_gp_irq;
+	struct msm_pintype_info *pinfo = ic_to_pintype(ic);
+	struct gpio_chip *gc = pintype_get_gc(pinfo);
+	int num_irqs = ic->num_irqs;
+
+	spin_lock_irqsave(&ic->irq_lock, irq_flags);
+
+	for_each_set_bit(i, ic->wake_irqs, num_irqs) {
+		intstat = msm_tlmm_v4_get_intr_status(ic, i);
+		if (intstat) {
+			virq = msm_tlmm_v4_gp_to_irq(gc, i);
+#ifdef CONFIG_SEC_PM_DEBUG
+			log_wakeup_reason(virq);
+			update_wakeup_reason_stats(virq);
+#endif
+		}
+	}
+
+	spin_unlock_irqrestore(&ic->irq_lock, irq_flags);
+}
+
 static void msm_tlmm_v4_gp_irq_resume(void)
 {
 	unsigned long irq_flags;
@@ -760,6 +790,7 @@ static void msm_tlmm_v4_gp_irq_resume(void)
 	struct msm_tlmm_irq_chip *ic = &msm_tlmm_v4_gp_irq;
 	int num_irqs = ic->num_irqs;
 
+	msm_tlmm_v4_gp_show_resume_irq();
 	spin_lock_irqsave(&ic->irq_lock, irq_flags);
 	for_each_set_bit(i, ic->wake_irqs, num_irqs)
 		msm_tlmm_v4_set_intr_cfg_enable(ic, i, 0);
@@ -911,6 +942,54 @@ static const struct of_device_id msm_tlmm_v4_dt_match[] = {
 	{},
 };
 MODULE_DEVICE_TABLE(of, msm_tlmm_v4_dt_match);
+
+
+void msm_tlmm_v4_get_gp_cfg(uint pin_no, struct gpiomux_setting *val)
+{
+	unsigned int cfg_val, inout_val;
+	struct msm_pintype_info pinfo = tlmm_v4_pininfo[0];
+
+	void __iomem *cfg_reg = TLMMV4_GP_CFG(pinfo.reg_base, pin_no);
+	void __iomem *inout_reg = TLMMV4_GP_INOUT(pinfo.reg_base, pin_no);
+
+	cfg_val = readl_relaxed(cfg_reg);
+	inout_val = readl_relaxed(inout_reg);
+
+	val->pull = cfg_val & 0x3;
+	val->func = (cfg_val >> 2) & 0xf;
+	val->drv = (cfg_val >> 6) & 0x7;
+	val->dir = cfg_val& BIT_MASK(9) ? 1 : GPIOMUX_IN;
+
+	if ((val->func == GPIOMUX_FUNC_GPIO) && (val->dir))
+		val->dir = inout_val & BIT_MASK(1) ?
+		GPIOMUX_OUT_HIGH : GPIOMUX_OUT_LOW;
+
+}
+int msm_tlmm_v4_get_gp_value(uint pin_no)
+{
+	struct msm_pintype_info pinfo = tlmm_v4_pininfo[0];
+
+	void __iomem *inout_reg = TLMMV4_GP_INOUT(pinfo.reg_base, pin_no);
+
+	return readl_relaxed(inout_reg) & BIT(GPIO_OUT_BIT);
+}
+
+int msm_tlmm_v4_get_gp_input_value(uint pin_no)
+{
+	struct msm_pintype_info pinfo = tlmm_v4_pininfo[0];
+
+	void __iomem *inout_reg = TLMMV4_GP_INOUT(pinfo.reg_base, pin_no);
+
+	return readl_relaxed(inout_reg) & BIT(GPIO_IN_BIT);
+}
+
+
+int msm_tlmm_v4_get_gp_num(void)
+{
+	struct msm_pintype_info pinfo = tlmm_v4_pininfo[0];
+
+	return pinfo.num_pins;
+}
 
 static int msm_tlmm_v4_probe(struct platform_device *pdev)
 {

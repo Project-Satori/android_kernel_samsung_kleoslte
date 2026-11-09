@@ -18,6 +18,8 @@
 #include <linux/of_gpio.h>
 #include <linux/of_i2c.h>
 
+#define NEW_GPIO_GET
+
 struct i2c_gpio_private_data {
 	struct i2c_adapter adap;
 	struct i2c_algo_bit_data bit_data;
@@ -88,12 +90,16 @@ static int i2c_gpio_getscl(void *data)
 static int of_i2c_gpio_get_pins(struct device_node *np,
 				unsigned int *sda_pin, unsigned int *scl_pin)
 {
+#ifdef NEW_GPIO_GET
+	*sda_pin = of_get_named_gpio(np, "i2c-gpio-sda", 0);
+	*scl_pin = of_get_named_gpio(np, "i2c-gpio-scl", 0);
+#else
 	if (of_gpio_count(np) < 2)
 		return -ENODEV;
 
 	*sda_pin = of_get_gpio(np, 0);
 	*scl_pin = of_get_gpio(np, 1);
-
+#endif
 	if (!gpio_is_valid(*sda_pin) || !gpio_is_valid(*scl_pin)) {
 		pr_err("%s: invalid GPIO pins, sda=%d/scl=%d\n",
 		       np->full_name, *sda_pin, *scl_pin);
@@ -219,7 +225,16 @@ static int i2c_gpio_probe(struct platform_device *pdev)
 	adap->dev.parent = &pdev->dev;
 	adap->dev.of_node = pdev->dev.of_node;
 
-	adap->nr = pdev->id;
+	if (pdev->dev.of_node) {
+		ret = of_alias_get_id(pdev->dev.of_node, "i2c");
+		if (ret >= 0) {
+			adap->nr = ret;
+			ret = 0;
+		} else
+			adap->nr = -1;
+	} else
+		adap->nr = pdev->id;
+
 	ret = i2c_bit_add_numbered_bus(adap);
 	if (ret)
 		goto err_add_bus;

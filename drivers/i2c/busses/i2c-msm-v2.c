@@ -2260,10 +2260,9 @@ static irqreturn_t i2c_msm_qup_isr(int irq, void *devid)
 								irq, 0, 0);
 
 	if (!atomic_read(&ctrl->is_ctrl_active)) {
-		dev_info(ctrl->dev, "irq:%d when PM suspended\n", irq);
-		return IRQ_NONE;
+			dev_info(ctrl->dev, "irq:%d when PM suspended\n", irq);
+			return IRQ_NONE;
 	}
-
 	if (!ctrl->xfer.msgs) {
 		dev_info(ctrl->dev, "irq:%d when no active transfer\n", irq);
 		writel_relaxed(QUP_STATE_RESET, base + QUP_STATE);
@@ -2809,6 +2808,7 @@ i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	i2c_msm_prof_evnt_add(ctrl, MSM_PROF, i2c_msm_prof_dump_xfer_beg,
 							num, msgs->addr, 0);
 
+	//pr_err("****%s:%d pwr_cnt is %d ",__func__,__LINE__,ctrl->pwr_state);
 	i2c_msm_pm_resume_adptr(ctrl);
 	/* if runtime PM callback was not invoked */
 	if (ctrl->pwr_state != MSM_I2C_PM_ACTIVE) {
@@ -3385,6 +3385,7 @@ static void i2c_msm_pm_clk_vote(struct i2c_msm_ctrl *ctrl)
 static int i2c_msm_pm_suspend_impl(struct device *dev)
 {
 	struct i2c_msm_ctrl *ctrl = dev_get_drvdata(dev);
+//	pr_err("****%s:%d pwr_cnt is %d and uesage_count %d",__func__,__LINE__,ctrl->pwr_state,atomic_read(&dev->power.usage_count));
 
 	if (ctrl->pwr_state == MSM_I2C_PM_SUSPENDED) {
 		dev_err(ctrl->dev, "attempt to suspend when suspended\n");
@@ -3405,6 +3406,7 @@ static int  i2c_msm_pm_resume_impl(struct device *dev)
 	if (ctrl->pwr_state == MSM_I2C_PM_ACTIVE)
 		return 0;
 
+//	pr_err("****%s:%d pwr_cnt is %d and uesage_count %d",__func__,__LINE__,ctrl->pwr_state,atomic_read(&dev->power.usage_count));
 	i2c_msm_dbg(ctrl, MSM_DBG, "resuming...");
 
 	i2c_msm_pm_pinctrl_state(ctrl, true);
@@ -3426,6 +3428,7 @@ static int i2c_msm_pm_sys_suspend_noirq(struct device *dev)
 	struct i2c_msm_ctrl *ctrl = dev_get_drvdata(dev);
 	enum msm_i2c_power_state curr_state = ctrl->pwr_state;
 	i2c_msm_dbg(ctrl, MSM_DBG, "pm_sys_noirq: suspending...");
+//	pr_err("****%s:%d pwr_cnt is %d and uesage_count %d",__func__,__LINE__,ctrl->pwr_state,atomic_read(&dev->power.usage_count));
 
 	/* Acquire mutex to ensure current transaction is over */
 	mutex_lock(&ctrl->mlock);
@@ -3464,6 +3467,7 @@ static int i2c_msm_pm_sys_resume_noirq(struct device *dev)
 	i2c_msm_dbg(ctrl, MSM_DBG, "pm_sys_noirq: resuming...");
 	ctrl->pwr_state = MSM_I2C_PM_SUSPENDED;
 	atomic_set(&ctrl->is_ctrl_active, 0);
+
 	return  0;
 }
 #endif
@@ -3471,6 +3475,7 @@ static int i2c_msm_pm_sys_resume_noirq(struct device *dev)
 #ifdef CONFIG_PM_RUNTIME
 static void i2c_msm_pm_rt_init(struct device *dev)
 {
+//	pr_err("****%s:%d",__func__,__LINE__);
 	pm_runtime_set_suspended(dev);
 	pm_runtime_set_autosuspend_delay(dev, MSEC_PER_SEC);
 	pm_runtime_use_autosuspend(dev);
@@ -3484,6 +3489,8 @@ static int i2c_msm_pm_rt_suspend(struct device *dev)
 {
 	struct i2c_msm_ctrl *ctrl = dev_get_drvdata(dev);
 	int ret = 0;
+
+//	pr_err("****%s:%d pwr_cnt is %d and uesage_count %d",__func__,__LINE__,ctrl->pwr_state,atomic_read(&dev->power.usage_count));
 
 	i2c_msm_dbg(ctrl, MSM_DBG, "pm_runtime: suspending...");
 	ret = i2c_msm_pm_suspend_impl(dev);
@@ -3499,6 +3506,7 @@ static int i2c_msm_pm_rt_resume(struct device *dev)
 {
 	struct i2c_msm_ctrl *ctrl = dev_get_drvdata(dev);
 
+//	pr_err("****%s:%d pwr_cnt is %d and uesage_count %d",__func__,__LINE__,ctrl->pwr_state,atomic_read(&dev->power.usage_count));
 	i2c_msm_dbg(ctrl, MSM_DBG, "pm_runtime: resuming...");
 	return  i2c_msm_pm_resume_impl(dev);
 }
@@ -3514,6 +3522,7 @@ static void i2c_msm_pm_suspend_adptr(struct i2c_msm_ctrl *ctrl)
 {
 	if (ctrl->rsrcs.clk_ctl_xfer)
 		i2c_msm_pm_suspend_clk(ctrl);
+
 	pm_runtime_mark_last_busy(ctrl->dev);
 	pm_runtime_put_autosuspend(ctrl->dev);
 }
@@ -3533,6 +3542,7 @@ static void i2c_msm_pm_suspend_adptr(struct i2c_msm_ctrl *ctrl)
 {
 	if (ctrl->rsrcs.clk_ctl_xfer)
 		i2c_msm_pm_suspend_clk(ctrl);
+
 	i2c_msm_pm_suspend_impl(ctrl->dev);
 	ctrl->pwr_state = MSM_I2C_PM_SUSPENDED;
 	atomic_set(&ctrl->is_ctrl_active, 0);

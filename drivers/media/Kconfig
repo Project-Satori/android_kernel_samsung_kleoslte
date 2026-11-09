@@ -199,4 +199,8 @@ source "drivers/media/i2c/Kconfig"
 source "drivers/media/tuners/Kconfig"
 source "drivers/media/dvb-frontends/Kconfig"
 
+# MTV Drivers
+#
+source "drivers/media/mtv/Kconfig"
+
 endif # MEDIA_SUPPORT

@@ -52,6 +52,12 @@ int rtc_hctosys(void)
 		goto err_invalid;
 	}
 
+	/*
+	 * Force update rtc year time to 2014
+	 * (The release year of device)
+	*/
+	tm.tm_year = 114;
+
 	rtc_tm_to_time(&tm, &tv.tv_sec);
 
 	err = do_settimeofday(&tv);
