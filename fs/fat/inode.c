@@ -543,7 +543,7 @@ static void fat_set_state(struct super_block *sb,
 			b->fat16.state &= ~FAT_STATE_DIRTY;
 	}
 
-	mark_buffer_dirty(bh);
+	mark_buffer_dirty_sync(bh);
 	sync_dirty_buffer(bh);
 	brelse(bh);
 }
@@ -551,6 +551,8 @@ static void fat_set_state(struct super_block *sb,
 static void fat_put_super(struct super_block *sb)
 {
 	struct msdos_sb_info *sbi = MSDOS_SB(sb);
+
+	fat_msg(sb, KERN_INFO, "trying to unmount...");
 
 	fat_set_state(sb, 0, 0);
 
@@ -565,6 +567,8 @@ static void fat_put_super(struct super_block *sb)
 
 	sb->s_fs_info = NULL;
 	kfree(sbi);
+
+	fat_msg(sb, KERN_INFO, "unmounted successfully!");
 }
 
 static struct kmem_cache *fat_inode_cachep;
@@ -718,7 +722,7 @@ retry:
 				  &raw_entry->adate, NULL);
 	}
 	spin_unlock(&sbi->inode_hash_lock);
-	mark_buffer_dirty(bh);
+	mark_buffer_dirty_sync(bh);
 	err = 0;
 	if (wait)
 		err = sync_dirty_buffer(bh);
@@ -1222,8 +1226,8 @@ static int fat_read_root(struct inode *inode)
 	MSDOS_I(inode)->mmu_private = inode->i_size;
 
 	fat_save_attrs(inode, ATTR_DIR);
-	inode->i_mtime.tv_sec = inode->i_atime.tv_sec = inode->i_ctime.tv_sec = 0;
-	inode->i_mtime.tv_nsec = inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = 0;
+
+	inode->i_mtime = inode->i_atime = inode->i_ctime = CURRENT_TIME_SEC;
 	set_nlink(inode, fat_subdirs(inode)+2);
 
 	return 0;
@@ -1261,6 +1265,7 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	long error;
 	char buf[50];
 
+	fat_msg(sb, KERN_INFO, "trying to mount...");
 	/*
 	 * GFP_KERNEL is ok here, because while we do hold the
 	 * supeblock lock, memory pressure can't call back into
@@ -1268,8 +1273,10 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	 * it and have no inodes etc active!
 	 */
 	sbi = kzalloc(sizeof(struct msdos_sb_info), GFP_KERNEL);
-	if (!sbi)
+	if (!sbi) {
+		fat_msg(sb, KERN_ERR, "failed to mount! (ENOMEM)");
 		return -ENOMEM;
+	}
 	sb->s_fs_info = sbi;
 
 	sb->s_flags |= MS_NODIRATIME;
@@ -1550,6 +1557,7 @@ int fat_fill_super(struct super_block *sb, void *data, int silent, int isvfat,
 	}
 
 	fat_set_state(sb, 1, 0);
+	fat_msg(sb, KERN_INFO, "mounted successfully!");
 	return 0;
 
 out_invalid:
@@ -1558,6 +1566,7 @@ out_invalid:
 		fat_msg(sb, KERN_INFO, "Can't find a valid FAT filesystem");
 
 out_fail:
+	fat_msg(sb, KERN_ERR, "failed to mount!");
 	if (fsinfo_inode)
 		iput(fsinfo_inode);
 	if (fat_inode)
