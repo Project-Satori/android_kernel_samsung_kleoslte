@@ -43,6 +43,10 @@
 #include "pm-boot.h"
 #include "../../../arch/arm/mach-msm/clock.h"
 
+#ifdef CONFIG_SEC_DEBUG
+#include <mach/sec_debug.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/trace_msm_low_power.h>
 
@@ -284,12 +288,21 @@ static bool __ref msm_pm_spm_power_collapse(
 
 	msm_jtag_save_state();
 
+#ifdef CONFIG_SEC_DEBUG
+        secdbg_sched_msg("+pc(I:%d,R:%d)", from_idle, notify_rpm);
+#endif
+
 #ifdef CONFIG_CPU_V7
 	collapsed = save_cpu_regs ?
 		!cpu_suspend(0, msm_pm_collapse) : msm_pm_pc_hotplug();
 #else
 	collapsed = save_cpu_regs ?
 		!cpu_suspend(0) : msm_pm_pc_hotplug();
+#endif
+
+
+#ifdef CONFIG_SEC_DEBUG
+        secdbg_sched_msg("-pc(%d)", collapsed);
 #endif
 
 	if (save_cpu_regs) {
