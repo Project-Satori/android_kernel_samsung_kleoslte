@@ -20,8 +20,10 @@
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/err.h>
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 
 #include "usb_gadget_xport.h"
+#endif
 #include "u_serial.h"
 #include "gadget_chips.h"
 
@@ -47,7 +49,9 @@ struct f_acm {
 	struct gserial			port;
 	u8				ctrl_id, data_id;
 	u8				port_num;
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	enum transport_type		transport;
+#endif
 
 	u8				pending;
 
@@ -78,6 +82,7 @@ struct f_acm {
 #define ACM_CTRL_DCD		(1 << 0)
 };
 
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 static unsigned int no_acm_tty_ports;
 static unsigned int no_acm_smd_ports;
 static unsigned int nr_acm_ports;
@@ -90,6 +95,7 @@ static struct acm_port_info {
 	unsigned		port_num;
 	unsigned char		client_port_num;
 } gacm_ports[GSERIAL_NO_PORTS];
+#endif
 
 static inline struct f_acm *func_to_acm(struct usb_function *f)
 {
@@ -101,6 +107,7 @@ static inline struct f_acm *port_to_acm(struct gserial *p)
 	return container_of(p, struct f_acm, port);
 }
 
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 int acm_port_setup(struct usb_configuration *c)
 {
 	int ret = 0, i;
@@ -182,6 +189,8 @@ static int acm_port_disconnect(struct f_acm *acm)
 
 	return 0;
 }
+#endif
+
 /*-------------------------------------------------------------------------*/
 
 /* notification endpoint uses smallish and infrequent fixed-size messages */
@@ -395,6 +404,10 @@ static struct usb_gadget_strings *acm_strings[] = {
 	NULL,
 };
 
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+static int acm_notify_serial_state(struct f_acm *acm);
+#endif
+
 /*-------------------------------------------------------------------------*/
 
 /* ACM control ... data handling is delegated to tty library code.
@@ -457,8 +470,12 @@ static int acm_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 	/* SET_LINE_CODING ... just read and save what the host sends */
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
 			| USB_CDC_REQ_SET_LINE_CODING:
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+		if (w_length != sizeof(struct usb_cdc_line_coding))
+#else
 		if (w_length != sizeof(struct usb_cdc_line_coding)
-				|| w_index != acm->ctrl_id)
+			|| w_index != acm->ctrl_id)
+#endif
 			goto invalid;
 
 		value = w_length;
@@ -469,8 +486,10 @@ static int acm_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 	/* GET_LINE_CODING ... return what host sent, or initial value */
 	case ((USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
 			| USB_CDC_REQ_GET_LINE_CODING:
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		if (w_index != acm->ctrl_id)
 			goto invalid;
+#endif
 
 		value = min_t(unsigned, w_length,
 				sizeof(struct usb_cdc_line_coding));
@@ -480,8 +499,10 @@ static int acm_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 	/* SET_CONTROL_LINE_STATE ... save what the host sent */
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
 			| USB_CDC_REQ_SET_CONTROL_LINE_STATE:
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		if (w_index != acm->ctrl_id)
 			goto invalid;
+#endif
 
 		value = 0;
 
@@ -490,12 +511,17 @@ static int acm_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 		 * that bit, we should return to that no-flow state.
 		 */
 		acm->port_handshake_bits = w_value;
+#ifdef CONFIG_USB_DUN_SUPPORT
+		notify_control_line_state((unsigned long)w_value);
+#endif
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		if (acm->port.notify_modem) {
 			unsigned port_num =
 				gacm_ports[acm->port_num].client_port_num;
 
 			acm->port.notify_modem(&acm->port, port_num, w_value);
 		}
+#endif
 		break;
 
 	default:
@@ -544,7 +570,11 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	} else if (intf == acm->data_id) {
 		if (acm->port.in->driver_data) {
 			DBG(cdev, "reset acm ttyGS%d\n", acm->port_num);
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+			gserial_disconnect(&acm->port);
+#else
 			acm_port_disconnect(acm);
+#endif
 		}
 		if (!acm->port.in->desc || !acm->port.out->desc) {
 			DBG(cdev, "activate acm ttyGS%d\n", acm->port_num);
@@ -557,7 +587,11 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 				return -EINVAL;
 			}
 		}
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+		gserial_connect(&acm->port, acm->port_num);
+#else
 		acm_port_connect(acm);
+#endif
 
 	} else
 		return -EINVAL;
@@ -571,7 +605,11 @@ static void acm_disable(struct usb_function *f)
 	struct usb_composite_dev *cdev = f->config->cdev;
 
 	DBG(cdev, "acm ttyGS%d deactivated\n", acm->port_num);
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	gserial_disconnect(&acm->port);
+#else
 	acm_port_disconnect(acm);
+#endif
 	usb_ep_disable(acm->notify);
 	acm->notify->driver_data = NULL;
 }
@@ -702,6 +740,7 @@ static int acm_send_break(struct gserial *port, int duration)
 	return acm_notify_serial_state(acm);
 }
 
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 static int acm_send_modem_ctrl_bits(struct gserial *port, int ctrl_bits)
 {
 	struct f_acm *acm = port_to_acm(port);
@@ -710,6 +749,7 @@ static int acm_send_modem_ctrl_bits(struct gserial *port, int ctrl_bits)
 
 	return acm_notify_serial_state(acm);
 }
+#endif
 
 /*-------------------------------------------------------------------------*/
 
@@ -843,7 +883,9 @@ static void acm_free_func(struct usb_function *f)
 	struct f_acm		*acm = func_to_acm(f);
 
 	kfree(acm);
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	acm_next_free_port--;
+#endif
 }
 
 static struct usb_function *acm_alloc_func(struct usb_function_instance *fi)
@@ -859,16 +901,28 @@ static struct usb_function *acm_alloc_func(struct usb_function_instance *fi)
 
 	spin_lock_init(&acm->lock);
 
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	if (nr_acm_ports)
 		opts->port_num = acm_next_free_port++;
+#endif
 
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	acm->transport = gacm_ports[opts->port_num].transport;
+#endif
 	acm->port.connect = acm_connect;
 	acm->port.disconnect = acm_disconnect;
 	acm->port.send_break = acm_send_break;
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	acm->port.send_modem_ctrl_bits = acm_send_modem_ctrl_bits;
+#endif
 
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	acm->port.func.name = kasprintf(GFP_KERNEL, "acm%u", opts->port_num);
+#else
+	//acm->port.func.name = kasprintf(GFP_KERNEL, "acm%u", opts->port_num + 1);
 	acm->port.func.name = "acm";
+#endif
+	
 	acm->port.func.strings = acm_strings;
 	/* descriptors are per-instance copies */
 	acm->port.func.bind = acm_bind;
@@ -941,7 +995,9 @@ static void acm_free_instance(struct usb_function_instance *fi)
 	struct f_serial_opts *opts;
 
 	opts = container_of(fi, struct f_serial_opts, func_inst);
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	if (!nr_acm_ports)
+#endif
 		gserial_free_line(opts->port_num);
 
 	kfree(opts);
@@ -956,13 +1012,17 @@ static struct usb_function_instance *acm_alloc_instance(void)
 	if (!opts)
 		return ERR_PTR(-ENOMEM);
 	opts->func_inst.free_func_inst = acm_free_instance;
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	if (!nr_acm_ports) {
+#endif
 		ret = gserial_alloc_line(&opts->port_num);
 		if (ret) {
 			kfree(opts);
 			return ERR_PTR(ret);
 		}
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	}
+#endif
 	config_group_init_type_name(&opts->func_inst.group, "",
 			&acm_func_type);
 	return &opts->func_inst;
@@ -970,6 +1030,7 @@ static struct usb_function_instance *acm_alloc_instance(void)
 DECLARE_USB_FUNCTION_INIT(acm, acm_alloc_instance, acm_alloc_func);
 MODULE_LICENSE("GPL");
 
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 /**
  * acm_init_port - bind a acm_port to its transport
  */
@@ -1005,3 +1066,4 @@ int acm_init_port(int port_num, const char *name)
 
 	return 0;
 }
+#endif

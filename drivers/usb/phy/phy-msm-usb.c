@@ -74,6 +74,11 @@
 
 #define USB_SUSPEND_DELAY_TIME	(500 * HZ/1000) /* 500 msec */
 
+#define USE_MUIC_CHGTYPE	(CONFIG_SM5502_MUIC | CONFIG_USB_SWITCH_RT8973 | CONFIG_SM5504_MUIC)
+
+
+
+
 enum msm_otg_phy_reg_mode {
 	USB_PHY_REG_OFF,
 	USB_PHY_REG_ON,
@@ -96,7 +101,9 @@ module_param(floated_charger_enable , bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(floated_charger_enable,
 	"Whether to enable floated charger");
 
+#ifdef OTG_WAIT_PMIC
 static DECLARE_COMPLETION(pmic_vbus_init);
+#endif
 static struct msm_otg *the_msm_otg;
 static bool debug_aca_enabled;
 static bool debug_bus_voting_enabled;
@@ -121,6 +128,10 @@ static inline bool aca_enabled(void)
 }
 
 static int vdd_val[VDD_VAL_MAX];
+
+
+
+#include "phy-msm-usb_sec.c"
 
 static int msm_hsusb_ldo_init(struct msm_otg *motg, int init)
 {
@@ -1379,6 +1390,8 @@ static void msm_otg_notify_host_mode(struct msm_otg *motg, bool host_mode)
 	}
 }
 
+
+#ifndef USE_MUIC_CHGTYPE
 static int msm_otg_notify_chg_type(struct msm_otg *motg)
 {
 	static int charger_type;
@@ -1451,7 +1464,10 @@ psy_error:
 	dev_dbg(motg->phy.dev, "power supply error when setting property\n");
 	return -ENXIO;
 }
+#endif
 
+
+#ifndef USE_MUIC_CHGTYPE
 static void msm_otg_set_online_status(struct msm_otg *motg)
 {
 	if (!psy)
@@ -1461,9 +1477,12 @@ static void msm_otg_set_online_status(struct msm_otg *motg)
 	if (power_supply_set_online(psy, false))
 		dev_dbg(motg->phy.dev, "error setting power supply property\n");
 }
+#endif
+
 
 static void msm_otg_notify_charger(struct msm_otg *motg, unsigned mA)
 {
+#ifndef USE_MUIC_CHGTYPE
 	struct usb_gadget *g = motg->phy.otg->gadget;
 
 	if (g && g->is_a_peripheral)
@@ -1501,6 +1520,7 @@ static void msm_otg_notify_charger(struct msm_otg *motg, unsigned mA)
 		pm8921_charger_vbus_draw(mA);
 
 	motg->cur_power = mA;
+#endif
 }
 
 static int msm_otg_set_power(struct usb_phy *phy, unsigned mA)
@@ -2532,7 +2552,9 @@ static void msm_chg_detect_work(struct work_struct *w)
 		 * Notify the charger type to power supply
 		 * owner as soon as we determine the charger.
 		 */
+#ifndef USE_MUIC_CHGTYPE		 
 		msm_otg_notify_chg_type(motg);
+#endif
 		msm_chg_block_off(motg);
 		msm_chg_enable_aca_det(motg);
 		/*
@@ -2567,7 +2589,9 @@ static void msm_otg_init_sm(struct msm_otg *motg)
 {
 	struct msm_otg_platform_data *pdata = motg->pdata;
 	u32 otgsc = readl(USB_OTGSC);
+#ifdef OTG_WAIT_PMIC
 	int ret;
+#endif
 
 	switch (pdata->mode) {
 	case USB_OTG:
@@ -2604,6 +2628,8 @@ static void msm_otg_init_sm(struct msm_otg *motg)
 				else
 					clear_bit(ID, &motg->inputs);
 			}
+
+#ifdef OTG_WAIT_PMIC
 			/*
 			 * VBUS initial state is reported after PMIC
 			 * driver initialization. Wait for it.
@@ -2616,6 +2642,8 @@ static void msm_otg_init_sm(struct msm_otg *motg)
 				clear_bit(B_SESS_VLD, &motg->inputs);
 				pmic_vbus_init.done = 1;
 			}
+#endif
+
 		}
 		break;
 	case USB_HOST:
@@ -2629,6 +2657,7 @@ static void msm_otg_init_sm(struct msm_otg *motg)
 			else
 				clear_bit(B_SESS_VLD, &motg->inputs);
 		} else if (pdata->otg_control == OTG_PMIC_CONTROL) {
+#ifdef OTG_WAIT_PMIC
 			/*
 			 * VBUS initial state is reported after PMIC
 			 * driver initialization. Wait for it.
@@ -2641,6 +2670,7 @@ static void msm_otg_init_sm(struct msm_otg *motg)
 				clear_bit(B_SESS_VLD, &motg->inputs);
 				pmic_vbus_init.done = 1;
 			}
+#endif
 		} else if (pdata->otg_control == OTG_USER_CONTROL) {
 			set_bit(ID, &motg->inputs);
 			set_bit(B_SESS_VLD, &motg->inputs);
@@ -2703,7 +2733,7 @@ static void msm_otg_sm_work(struct work_struct *w)
 		msm_otg_reset(otg->phy);
 		msm_otg_init_sm(motg);
 		if (!psy && legacy_power_supply) {
-			psy = power_supply_get_by_name("usb");
+			psy = power_supply_get_by_name("msm-usb");
 
 			if (!psy)
 				pr_err("couldn't get usb power supply\n");
@@ -3474,18 +3504,36 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 static void msm_otg_set_vbus_state(int online)
 {
 	struct msm_otg *motg = the_msm_otg;
+#ifdef OTG_WAIT_PMIC
 	static bool init;
+#endif
 
 	if (online) {
 		pr_debug("PMIC: BSV set\n");
+#ifdef OTG_WAIT_PMIC
 		if (test_and_set_bit(B_SESS_VLD, &motg->inputs) && init)
 			return;
+#else
+		if (test_and_set_bit(B_SESS_VLD, &motg->inputs))
+			return;
+#endif
+
+#ifdef USE_MUIC_CHGTYPE
+		motg->chg_state = USB_CHG_STATE_DETECTED;
+		motg->chg_type = USB_SDP_CHARGER;
+#endif	
 	} else {
 		pr_debug("PMIC: BSV clear\n");
+#ifdef OTG_WAIT_PMIC
 		if (!test_and_clear_bit(B_SESS_VLD, &motg->inputs) && init)
 			return;
+#else
+		if (!test_and_clear_bit(B_SESS_VLD, &motg->inputs))
+			return;
+#endif
 	}
 
+#ifdef OTG_WAIT_PMIC
 	/* do not queue state m/c work if id is grounded */
 	if (!test_bit(ID, &motg->inputs)) {
 		/*
@@ -3503,6 +3551,7 @@ static void msm_otg_set_vbus_state(int online)
 		pr_debug("PMIC: BSV init complete\n");
 		return;
 	}
+#endif
 
 	if (test_bit(MHL, &motg->inputs) ||
 			mhl_det_in_progress) {
@@ -3517,6 +3566,12 @@ static void msm_otg_set_vbus_state(int online)
 		queue_work(system_nrt_wq, &motg->sm_work);
 	}
 }
+
+void sec_otg_set_vbus_state(int online)
+{
+	msm_otg_set_vbus_state(online);
+}
+EXPORT_SYMBOL(sec_otg_set_vbus_state);
 
 static void msm_id_status_w(struct work_struct *w)
 {
@@ -3556,6 +3611,8 @@ static void msm_id_status_w(struct work_struct *w)
 
 }
 
+
+#ifndef USE_MUIC_CHGTYPE
 #define MSM_ID_STATUS_DELAY	5 /* 5msec */
 static irqreturn_t msm_id_irq(int irq, void *data)
 {
@@ -3574,6 +3631,7 @@ static irqreturn_t msm_id_irq(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 int msm_otg_pm_notify(struct notifier_block *notify_block,
 					unsigned long mode, void *unused)
@@ -3902,6 +3960,7 @@ static int otg_power_set_property_usb(struct power_supply *psy,
 	/* The ONLINE property reflects if usb has enumerated */
 	case POWER_SUPPLY_PROP_ONLINE:
 		motg->online = val->intval;
+		pr_info("POWER_SUPPLY_PROP_ONLINE motg->online : %d, val->intval : %d psy->type : %d\n", motg->online, val->intval,psy->type);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		motg->voltage_max = val->intval;
@@ -3911,6 +3970,7 @@ static int otg_power_set_property_usb(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		psy->type = val->intval;
+		pr_info("POWER_SUPPLY_PROP_ONLINE motg->online : %d, val->intval : %d psy->type : %d\n", motg->online, val->intval,psy->type);
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		motg->usbin_health = val->intval;
@@ -4424,6 +4484,9 @@ struct msm_otg_platform_data *msm_otg_dt_to_pdata(struct platform_device *pdev)
 				&pdata->default_mode);
 	of_property_read_u32(node, "qcom,hsusb-otg-phy-type",
 				&pdata->phy_type);
+
+	printk("%s : init_seq =%d,%d,%d , otg_mode=%d , otg_control=%d\n",__func__,pdata->phy_init_seq[0],pdata->phy_init_seq[2],pdata->phy_init_seq[4],
+		pdata->mode,pdata->otg_control);
 	pdata->disable_reset_on_disconnect = of_property_read_bool(node,
 				"qcom,hsusb-otg-disable-reset");
 	pdata->pnoc_errata_fix = of_property_read_bool(node,
@@ -4483,7 +4546,9 @@ static int msm_otg_probe(struct platform_device *pdev)
 	struct usb_phy *phy;
 	struct msm_otg_platform_data *pdata;
 	void __iomem *tcsr;
+#ifndef USE_MUIC_CHGTYPE	
 	int id_irq = 0;
+#endif
 
 	dev_info(&pdev->dev, "msm_otg probe\n");
 
@@ -4848,6 +4913,7 @@ static int msm_otg_probe(struct platform_device *pdev)
 		goto free_async_irq;
 	}
 
+#ifndef USE_MUIC_CHGTYPE
 	if (motg->pdata->mode == USB_OTG &&
 		motg->pdata->otg_control == OTG_PMIC_CONTROL) {
 
@@ -4883,6 +4949,7 @@ static int msm_otg_probe(struct platform_device *pdev)
 			goto remove_phy;
 		}
 	}
+#endif
 
 	msm_hsusb_mhl_switch_enable(motg, 1);
 
@@ -4928,8 +4995,8 @@ static int msm_otg_probe(struct platform_device *pdev)
 		pm_runtime_use_autosuspend(&pdev->dev);
 	}
 
-	motg->usb_psy.name = "usb";
-	motg->usb_psy.type = POWER_SUPPLY_TYPE_USB;
+	motg->usb_psy.name = "msm-usb";
+	motg->usb_psy.type = POWER_SUPPLY_TYPE_UNKNOWN;
 	motg->usb_psy.supplied_to = otg_pm_power_supplied_to;
 	motg->usb_psy.num_supplicants = ARRAY_SIZE(otg_pm_power_supplied_to);
 	motg->usb_psy.properties = otg_pm_power_props_usb;
@@ -4949,8 +5016,11 @@ static int msm_otg_probe(struct platform_device *pdev)
 			psy = &motg->usb_psy;
 	}
 
+
+#ifndef USE_MUIC_CHGTYPE
 	if (legacy_power_supply && pdata->otg_control == OTG_PMIC_CONTROL)
 		pm8921_charger_register_vbus_sn(&msm_otg_set_vbus_state);
+#endif
 
 	ret = msm_otg_setup_ext_chg_cdev(motg);
 	if (ret)
@@ -4978,7 +5048,9 @@ remove_cdev:
 	}
 	if (psy)
 		power_supply_unregister(psy);
+#ifndef USE_MUIC_CHGTYPE	
 remove_phy:
+#endif
 	usb_remove_phy(&motg->phy);
 free_async_irq:
 	if (motg->async_irq)
