@@ -176,6 +176,7 @@ struct msm_fb_data_type {
 	int panel_reconfig;
 
 	u32 dst_format;
+	int resume_state;
 	int panel_power_on;
 	struct disp_info_type_suspend suspend;
 
@@ -196,7 +197,8 @@ struct msm_fb_data_type {
 	u32 bl_level_scaled;
 	u32 bl_level_prev_scaled;
 	struct mutex bl_lock;
-
+	struct mutex power_state;
+	struct mutex ctx_lock;
 	struct platform_device *pdev;
 
 	u32 mdp_fb_page_protection;
@@ -252,6 +254,10 @@ static inline void mdss_fb_update_notify_update(struct msm_fb_data_type *mfd)
 		mutex_unlock(&mfd->no_update.lock);
 	}
 }
+
+#ifdef CONFIG_FB_MSM_CAMERA_CSC
+extern u8 csc_update;
+#endif
 
 int mdss_fb_get_phys_info(dma_addr_t *start, unsigned long *len, int fb_num);
 void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl);

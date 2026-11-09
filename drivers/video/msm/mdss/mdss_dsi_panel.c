@@ -1131,6 +1131,8 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	pinfo->mipi.init_delay = (!rc ? tmp : 0);
 
 	mdss_dsi_parse_roi_alignment(np, pinfo);
+	rc = of_property_read_u32(np, "qcom,mdss-force-clk-lane-hs", &tmp);
+	pinfo->mipi.force_clk_lane_hs = (!rc ? tmp : 0);
 
 	mdss_dsi_parse_trigger(np, &(pinfo->mipi.mdp_trigger),
 		"qcom,mdss-dsi-mdp-trigger");

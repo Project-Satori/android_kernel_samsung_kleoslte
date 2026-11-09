@@ -16,7 +16,7 @@
 
 #include <linux/platform_device.h>
 #include <linux/types.h>
-
+#include <dlog.h>
 /* panel id type */
 struct panel_id {
 	u16 id;
@@ -507,4 +507,5 @@ int mdss_panel_get_boot_cfg(void);
  * returns true if mdss is ready, else returns false.
  */
 bool mdss_is_ready(void);
+extern bool no_panel;
 #endif /* MDSS_PANEL_H */

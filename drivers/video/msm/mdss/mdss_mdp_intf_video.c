@@ -744,7 +744,32 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 	pdata = ctl->panel_data;
 
 	pdata->panel_info.cont_splash_enabled = 0;
-
+#if defined(CONFIG_FB_MSM_MIPI_SAMSUNG_QHD_VIDEO_PT_PANEL)\
+	|| defined(CONFIG_FB_MSM_MIPI_SAMSUNG_WVGA_VIDEO_PT_PANEL)
+/*This code is needed to read MTP values, which are responsible for Display brightness change*/
+	if (handoff) {
+		ctl->force_screen_state = MDSS_SCREEN_FORCE_BLANK;
+		mdss_mdp_display_commit(ctl, NULL);
+		mdss_mdp_display_wait4comp(ctl);
+		mdp_video_write(ctx,	MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 0);
+		/*
+		 * Need to wait for atleast one vsync time for proper
+		 * TG OFF before doing changes on interfaces
+		 */
+		msleep(20);
+		mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_PANEL_OFF, NULL);
+		mdss_mdp_ctl_intf_event(ctl,MDSS_EVENT_UNBLANK, NULL);
+		mdp_video_write(ctx,	MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 1);
+		/*
+		 * Add memory barrier to make sure the MDP Video
+		 * mode engine is enabled before next frame is sent
+		 */
+		mb();
+		ctl->force_screen_state = MDSS_SCREEN_DEFAULT;
+		mdss_mdp_display_commit(ctl, NULL);
+		mdss_mdp_display_wait4comp(ctl);
+		}
+#endif
 	if (!handoff) {
 		ret = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_CONT_SPLASH_BEGIN,
 					      NULL);

@@ -262,4 +262,8 @@ static inline int mdss_get_iommu_domain(u32 type)
 
 	return mdss_res->iommu_map[type].domain_idx;
 }
+
+#ifdef CONFIG_SAMSUNG_LPM_MODE
+extern int poweroff_charging;
+#endif /* CONFIG_SAMSUNG_LPM_MODE */
 #endif /* MDSS_H */

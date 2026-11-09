@@ -62,6 +62,7 @@
 #define AXI_HALT_TIMEOUT_US	0x4000
 
 struct mdss_data_type *mdss_res;
+bool no_panel;
 
 static int mdss_fb_mem_get_iommu_domain(void)
 {
@@ -1237,7 +1238,14 @@ static int mdss_mdp_get_pan_cfg(struct mdss_panel_cfg *pan_cfg)
 	if (!t) {
 		pr_err("pan_name=[%s] invalid\n", pan_name);
 		pan_cfg->pan_intf = MDSS_PANEL_INTF_INVALID;
-		return -EINVAL;
+	}
+
+	if (!strcmp(pan_name, "no_panel")) {
+		pr_err("%s: No panel attached %s\n",__func__, pan_name);
+		no_panel = true;
+		return -ENODEV;
+	} else {
+		no_panel = false;
 	}
 
 	for (i = 0; ((pan_name + i) < t) && (i < 4); i++)
